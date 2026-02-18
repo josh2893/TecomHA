@@ -1,0 +1,20 @@
+send_raw_hex:
+  name: Send raw hex
+  description: Send a raw hex payload to the panel over the selected transport. Intended for protocol testing / reverse engineering.
+  fields:
+    hex:
+      name: Hex payload
+      description: Hex string (e.g. '01ff0a')
+      required: true
+      selector:
+        text:
+
+test_event:
+  name: Test event
+  description: Fires an internal test event tecom_challengerplus_test (useful when building automations).
+  fields:
+    note:
+      name: Note
+      required: false
+      selector:
+        text:
