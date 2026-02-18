@@ -44,7 +44,7 @@ class Frame:
     seq: int
     flag1: int = FLAG1_DEFAULT
     flag2: int = FLAG2_DEFAULT
-    body: bytes = b"""
+    body: bytes = b""
 
     def to_bytes(self) -> bytes:
         header = bytes([SYNC, self.msg_type, self.flag1, self.flag2, self.seq])

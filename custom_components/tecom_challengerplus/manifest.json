@@ -1,10 +1,11 @@
 {
   "domain": "tecom_challengerplus",
   "name": "Tecom ChallengerPlus",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "documentation": "https://example.invalid/tecom_challengerplus",
   "config_flow": true,
   "iot_class": "local_push",
   "requirements": [],
-  "codeowners": []
+  "codeowners": [],
+  "issue_tracker": "https://github.com/josh2893/TecomHA/issues"
 }
