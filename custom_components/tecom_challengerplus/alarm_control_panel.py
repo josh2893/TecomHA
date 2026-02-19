@@ -29,6 +29,8 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
 
     _attr_has_entity_name = True
     _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY
+    _attr_code_arm_required = False
+    _attr_code_disarm_required = False
 
     def __init__(self, hub, area: int) -> None:
         self._hub = hub
