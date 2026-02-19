@@ -12,7 +12,7 @@ from .exceptions import TecomNotSupported
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     hub = hass.data[DOMAIN][entry.entry_id]
-    entities = [TecomDoorLock(hub, i) for i in range(1, hub.doors_count + 1)]
+    entities = [TecomDoorLock(hub, i) for i in getattr(hub, 'door_ids', [])]
     async_add_entities(entities, True)
 
 class TecomDoorLock(LockEntity):

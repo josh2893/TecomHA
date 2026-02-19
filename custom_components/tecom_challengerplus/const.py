@@ -47,3 +47,10 @@ CONF_INPUTS_COUNT = "inputs_count"
 CONF_RELAYS_COUNT = "relays_count"
 CONF_DOORS_COUNT = "doors_count"
 CONF_AREAS_COUNT = "areas_count"
+
+# Door numbering options
+CONF_DOOR_FIRST = "door_first_number"
+CONF_DOOR_LAST = "door_last_number"
+
+# Relay numbering options
+CONF_RELAY_RANGES = "relay_ranges"  # e.g. "1-16,21-24,49-56"

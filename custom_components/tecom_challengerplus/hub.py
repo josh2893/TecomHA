@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -31,6 +32,9 @@ from .const import (
     CONF_INPUTS_COUNT,
     CONF_RELAYS_COUNT,
     CONF_DOORS_COUNT,
+    CONF_DOOR_FIRST,
+    CONF_DOOR_LAST,
+    CONF_RELAY_RANGES,
     CONF_AREAS_COUNT,
     CONF_ENCRYPTION_TYPE,
 )
@@ -41,6 +45,58 @@ from . import ctplus_protocol as proto
 _LOGGER = logging.getLogger(__name__)
 
 UpdateCallback = Callable[[], None]
+
+
+def parse_ranges(spec: str) -> list[tuple[int, int]]:
+    """Parse relay range specification like '1-16,21-24,49-56,72'."""
+    if not spec:
+        return []
+    parts = re.split(r"[\n,]+", spec)
+    ranges: list[tuple[int, int]] = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        if '-' in p:
+            a, b = p.split('-', 1)
+            try:
+                start = int(a.strip()); end = int(b.strip())
+            except ValueError:
+                continue
+        else:
+            try:
+                start = end = int(p)
+            except ValueError:
+                continue
+        if start <= 0 or end <= 0:
+            continue
+        if end < start:
+            start, end = end, start
+        ranges.append((start, end))
+    ranges.sort()
+    merged: list[tuple[int, int]] = []
+    for s, e in ranges:
+        if not merged:
+            merged.append((s, e)); continue
+        ps, pe = merged[-1]
+        if s <= pe + 1:
+            merged[-1] = (ps, max(pe, e))
+        else:
+            merged.append((s, e))
+    return merged
+
+def expand_ranges(ranges: list[tuple[int, int]]) -> list[int]:
+    ids: list[int] = []
+    for s, e in ranges:
+        ids.extend(range(s, e + 1))
+    seen: set[int] = set()
+    out: list[int] = []
+    for x in ids:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
 
 
 @dataclass
@@ -76,7 +132,27 @@ class TecomHub:
 
         self.inputs_count = int(cfg.get(CONF_INPUTS_COUNT, 0))
         self.relays_count = int(cfg.get(CONF_RELAYS_COUNT, 0))
-        self.doors_count = int(cfg.get(CONF_DOORS_COUNT, 0))
+        # Relay numbering can be non-contiguous; relay_ranges overrides relays_count when set.
+        self.relay_ranges_spec = str(cfg.get(CONF_RELAY_RANGES, '') or '').strip()
+        if self.relay_ranges_spec:
+            self.relay_poll_ranges = parse_ranges(self.relay_ranges_spec)
+            self.relay_ids = expand_ranges(self.relay_poll_ranges)
+            self.relays_max = max(self.relay_ids, default=0)
+        else:
+            self.relay_poll_ranges = [(1, self.relays_count)] if self.relays_count > 0 else []
+            self.relay_ids = list(range(1, self.relays_count + 1)) if self.relays_count > 0 else []
+            self.relays_max = self.relays_count
+        # Doors can be offset (e.g. 1-16 are RAS, 17+ are access doors). Configure by first/last inclusive.
+        self.door_first = int(cfg.get(CONF_DOOR_FIRST, 1) or 1)
+        self.door_last = int(cfg.get(CONF_DOOR_LAST, 0) or 0)
+        if self.door_last <= 0:
+            # Backward compatibility: derive from legacy doors_count if present.
+            legacy_dc = int(cfg.get(CONF_DOORS_COUNT, 0) or 0)
+            if legacy_dc > 0:
+                self.door_last = self.door_first + legacy_dc - 1
+        self.door_ids = list(range(self.door_first, self.door_last + 1)) if self.door_last >= self.door_first and self.door_last > 0 else []
+        self.doors_count = len(self.door_ids)
+        self.doors_max = self.door_last if self.door_last > 0 else max(self.door_ids, default=0)
         self.areas_count = int(cfg.get(CONF_AREAS_COUNT, 0))
 
         self.encryption_type = cfg.get(CONF_ENCRYPTION_TYPE, ENC_NONE)
@@ -241,8 +317,9 @@ class TecomHub:
                 await asyncio.sleep(self.poll_interval)
                 if self.inputs_count > 0:
                     await self.async_request_inputs(1, self.inputs_count)
-                if self.relays_count > 0:
-                    await self.async_request_relays(1, self.relays_count)
+                if getattr(self, 'relay_poll_ranges', None):
+                    for s, e in self.relay_poll_ranges:
+                        await self.async_request_relays(s, e)
             except asyncio.CancelledError:
                 return
             except Exception:

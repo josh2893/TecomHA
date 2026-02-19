@@ -39,6 +39,9 @@ from .const import (
     CONF_INPUTS_COUNT,
     CONF_RELAYS_COUNT,
     CONF_DOORS_COUNT,
+    CONF_DOOR_FIRST,
+    CONF_DOOR_LAST,
+    CONF_RELAY_RANGES,
     CONF_AREAS_COUNT,
 )
 
@@ -84,7 +87,27 @@ ENC_SELECTOR = selector.SelectSelector(
     )
 )
 
+def _normalized_defaults(defaults: dict) -> dict:
+    """Normalize defaults for backward compatibility."""
+    d = dict(defaults or {})
+    # Door range: if not set, derive from legacy doors_count.
+    if CONF_DOOR_FIRST not in d:
+        d[CONF_DOOR_FIRST] = 1
+    if int(d.get(CONF_DOOR_LAST, 0) or 0) == 0:
+        try:
+            dc = int(d.get(CONF_DOORS_COUNT, 0) or 0)
+        except (TypeError, ValueError):
+            dc = 0
+        if dc > 0:
+            d[CONF_DOOR_LAST] = int(d[CONF_DOOR_FIRST]) + dc - 1
+        else:
+            d.setdefault(CONF_DOOR_LAST, 0)
+    d.setdefault(CONF_RELAY_RANGES, "")
+    return d
+
+
 def _schema(defaults: dict) -> vol.Schema:
+    defaults = _normalized_defaults(defaults)
     return vol.Schema(
         {
             vol.Required(CONF_MODE, default=defaults.get(CONF_MODE, MODE_CTPLUS)): MODE_SELECTOR,
@@ -121,20 +144,33 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
             ),
+
+            # Inputs / Areas are still simple contiguous ranges (1..N).
             vol.Required(CONF_INPUTS_COUNT, default=int(defaults.get(CONF_INPUTS_COUNT, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=4096, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Required(CONF_RELAYS_COUNT, default=int(defaults.get(CONF_RELAYS_COUNT, 0))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Required(CONF_DOORS_COUNT, default=int(defaults.get(CONF_DOORS_COUNT, 0))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Required(CONF_AREAS_COUNT, default=int(defaults.get(CONF_AREAS_COUNT, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=1024, mode=selector.NumberSelectorMode.BOX)
             ),
+
+            # Doors: configure by first/last number (inclusive). Set last=0 to disable.
+            vol.Required(CONF_DOOR_FIRST, default=int(defaults.get(CONF_DOOR_FIRST, 1))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=2048, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_DOOR_LAST, default=int(defaults.get(CONF_DOOR_LAST, 0))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
+            ),
+
+            # Relays: either contiguous (1..relays_count) or ranges via relay_ranges (overrides).
+            vol.Required(CONF_RELAYS_COUNT, default=int(defaults.get(CONF_RELAYS_COUNT, 0))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_RELAY_RANGES, default=str(defaults.get(CONF_RELAY_RANGES, ""))): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
         }
     )
+
 
 class TecomChallengerPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Tecom ChallengerPlus."""

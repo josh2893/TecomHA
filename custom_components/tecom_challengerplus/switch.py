@@ -12,7 +12,7 @@ from .exceptions import TecomNotSupported
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     hub = hass.data[DOMAIN][entry.entry_id]
-    entities = [TecomRelaySwitch(hub, i) for i in range(1, hub.relays_count + 1)]
+    entities = [TecomRelaySwitch(hub, i) for i in getattr(hub, 'relay_ids', [])]
     async_add_entities(entities, True)
 
 class TecomRelaySwitch(SwitchEntity):

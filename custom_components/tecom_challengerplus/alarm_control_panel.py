@@ -1,59 +1,51 @@
-"""Alarm control panel entities for areas."""
+"""Alarm control panel platform for Tecom ChallengerPlus."""
 
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntity,
-    AlarmControlPanelState,
     AlarmControlPanelEntityFeature,
+    AlarmControlPanelState,
 )
 
 from .const import DOMAIN
-from .exceptions import TecomNotSupported
+from .entity import TecomBaseEntity
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+
+async def async_setup_entry(hass, entry, async_add_entities):
     hub = hass.data[DOMAIN][entry.entry_id]
-    entities = [TecomAreaAlarm(hub, i) for i in range(1, hub.areas_count + 1)]
-    async_add_entities(entities, True)
+    count = hub.areas_count
+    if count <= 0:
+        return
+    async_add_entities([TecomAreaAlarm(hub, entry, area=i) for i in range(1, count + 1)])
 
-class TecomAreaAlarm(AlarmControlPanelEntity):
-    _attr_has_entity_name = True
-    _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY | AlarmControlPanelEntityFeature.DISARM
-    _attr_icon = "mdi:shield-home"
 
-    def __init__(self, hub, area: int) -> None:
+class TecomAreaAlarm(TecomBaseEntity, AlarmControlPanelEntity):
+    """Represents a ChallengerPlus Area."""
+
+    # HA does not expose a DISARM feature flag; disarm support is implicit.
+    _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY
+
+    def __init__(self, hub, entry, area: int) -> None:
+        super().__init__(hub, entry)
         self._hub = hub
         self._area = area
-        self._attr_name = f"Area {area}"
-        self._attr_unique_id = f"{hub.entry.entry_id}_area_{area}"
-        self._unsub = None
-
-    async def async_added_to_hass(self) -> None:
-        self._unsub = self._hub.add_listener(self.async_write_ha_state)
-
-    async def async_will_remove_from_hass(self) -> None:
-        if self._unsub:
-            self._unsub()
-            self._unsub = None
+        self._attr_unique_id = f"{entry.entry_id}_area_{area}"
+        self._attr_name = f"{self._device_name} Area {area}"
 
     @property
-    def state(self):
-        raw = self._hub.state.areas.get(self._area)
-        if raw == "armed":
+    def state(self) -> AlarmControlPanelState | None:
+        st = self._hub.state.areas.get(self._area)
+        if st == "armed":
             return AlarmControlPanelState.ARMED_AWAY
-        if raw == "disarmed":
+        if st == "disarmed":
             return AlarmControlPanelState.DISARMED
-        if raw == "alarm":
+        if st == "alarm":
             return AlarmControlPanelState.TRIGGERED
-        return AlarmControlPanelState.UNKNOWN
+        return None
 
-    async def async_alarm_disarm(self, code=None):
-        if self._hub.mode != "ctplus":
-            raise TecomNotSupported("Area control requires CTPlus/management mode")
-        await self._hub.async_disarm_area(self._area)
-
-    async def async_alarm_arm_away(self, code=None):
+    async def async_alarm_arm_away(self, code: str | None = None) -> None:
         await self._hub.async_arm_area(self._area)
+
+    async def async_alarm_disarm(self, code: str | None = None) -> None:
+        await self._hub.async_disarm_area(self._area)
