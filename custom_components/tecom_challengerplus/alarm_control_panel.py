@@ -1,4 +1,4 @@
-"""Alarm control panel platform for Tecom ChallengerPlus."""
+"""Alarm control panel (Areas) for Tecom ChallengerPlus."""
 
 from __future__ import annotations
 
@@ -7,31 +7,52 @@ from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntityFeature,
     AlarmControlPanelState,
 )
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN
-from .entity import TecomBaseEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = hass.data[DOMAIN][entry.entry_id]
-    count = hub.areas_count
+
+    # Backwards compatible: use areas_count (1..N). If zero, create none.
+    count = int(getattr(hub, "areas_count", 0) or 0)
     if count <= 0:
         return
-    async_add_entities([TecomAreaAlarm(hub, entry, area=i) for i in range(1, count + 1)])
+
+    entities = [TecomAreaAlarm(hub, area=i) for i in range(1, count + 1)]
+    async_add_entities(entities, True)
 
 
-class TecomAreaAlarm(TecomBaseEntity, AlarmControlPanelEntity):
-    """Represents a ChallengerPlus Area."""
+class TecomAreaAlarm(AlarmControlPanelEntity):
+    """Represents one ChallengerPlus Area."""
 
-    # HA does not expose a DISARM feature flag; disarm support is implicit.
+    _attr_has_entity_name = True
     _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY
 
-    def __init__(self, hub, entry, area: int) -> None:
-        super().__init__(hub, entry)
+    def __init__(self, hub, area: int) -> None:
         self._hub = hub
         self._area = area
-        self._attr_unique_id = f"{entry.entry_id}_area_{area}"
-        self._attr_name = f"{self._device_name} Area {area}"
+        self._attr_name = f"Area {area}"
+        self._attr_unique_id = f"{hub.entry.entry_id}_area_{area}"
+        self._unsub = None
+
+    async def async_added_to_hass(self) -> None:
+        self._unsub = self._hub.add_listener(self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._hub.entry.unique_id or self._hub.entry.entry_id)},
+            name=self._hub.entry.title,
+            manufacturer="Aritech / Tecom",
+            model="ChallengerPlus",
+        )
 
     @property
     def state(self) -> AlarmControlPanelState | None:
