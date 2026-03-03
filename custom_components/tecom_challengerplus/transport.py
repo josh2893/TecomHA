@@ -18,7 +18,7 @@ class TecomTransportBase:
     async def async_stop(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
-    async def async_send(self, data: bytes) -> None:  # pragma: no cover
+    async def async_send(self, data: bytes, addr=None) -> None:  # pragma: no cover
         raise NotImplementedError
 
 
@@ -27,11 +27,15 @@ class TecomTransportBase:
 # -------------------------
 
 class _UDPProtocol(asyncio.DatagramProtocol):
-    def __init__(self, on_datagram: Callable[[bytes], None]) -> None:
+    def __init__(self, on_datagram: Callable[..., None]) -> None:
         self.on_datagram = on_datagram
 
     def datagram_received(self, data: bytes, addr):  # noqa: ANN001
-        self.on_datagram(data)
+        # Backward-compatible: support callbacks with either (data) or (data, addr)
+        try:
+            self.on_datagram(data, addr)
+        except TypeError:
+            self.on_datagram(data)
 
 
 class TecomUDPRaw(TecomTransportBase):
@@ -42,7 +46,7 @@ class TecomUDPRaw(TecomTransportBase):
         bind_port: int,
         remote_host: str,
         remote_port: int,
-        on_datagram: Callable[[bytes], None],
+        on_datagram: Callable[..., None],
     ) -> None:
         self._hass = hass
         self._bind_host = bind_host
@@ -63,10 +67,12 @@ class TecomUDPRaw(TecomTransportBase):
             self._transport.close()
             self._transport = None
 
-    async def async_send(self, data: bytes) -> None:
+    async def async_send(self, data: bytes, addr=None) -> None:
         if not self._transport:
             raise TecomConnectionError("UDP transport not started")
-        self._transport.sendto(data, self._remote)
+        # If an explicit addr is provided (e.g. ACK back to sender), use it.
+        # Otherwise send to configured remote.
+        self._transport.sendto(data, addr or self._remote)
 
 
 # -------------------------
@@ -152,7 +158,7 @@ class TecomTCPRaw(TecomTransportBase):
             await self._server.wait_closed()
             self._server = None
 
-    async def async_send(self, data: bytes) -> None:
+    async def async_send(self, data: bytes, addr=None) -> None:
         if not self._writer:
             raise TecomConnectionError("TCP not connected")
         self._writer.write(data)
@@ -197,7 +203,7 @@ class TecomTCPPrinterServer(TecomTransportBase):
             await self._server.wait_closed()
             self._server = None
 
-    async def async_send(self, data: bytes) -> None:
+    async def async_send(self, data: bytes, addr=None) -> None:
         # Printer stream is typically one-way (panel -> server), so we don't send.
         return
 
@@ -241,6 +247,6 @@ class TecomTCPPrinterClient(TecomTransportBase):
             self._writer = None
             self._reader = None
 
-    async def async_send(self, data: bytes) -> None:
+    async def async_send(self, data: bytes, addr=None) -> None:
         # Printer mode is typically read-only.
         return

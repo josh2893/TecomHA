@@ -20,3 +20,7 @@ This is an **experimental** custom integration based on observed CTPlus ↔ Chal
 - The integration currently expects **UDP/IP** and a fixed port (commonly 3001) like CTPlus.
 - If you enable encryption on the panel path, the integration will refuse to start (encryption not implemented yet).
 - TCP mode is experimental.
+
+## v0.2.7 changes
+- Improved UDP handling: can parse/ACK multiple CTPlus frames received in a single datagram.
+- UDP ACKs are sent back to the datagram sender address/port (helps prevent comms-path "event retries" / flapping).

@@ -290,8 +290,21 @@ class TecomHub:
             raise TecomConnectionError("Transport not started")
         await self._transport_obj.async_send(payload)
 
+    async def async_send_bytes_to(self, payload: bytes, addr) -> None:
+        """Send bytes to a specific UDP peer (addr=(ip,port))."""
+        if not self._transport_obj:
+            raise TecomConnectionError("Transport not started")
+        try:
+            await self._transport_obj.async_send(payload, addr=addr)
+        except TypeError:
+            # Transport doesn't support addr override (e.g. older TCP implementation)
+            await self._transport_obj.async_send(payload)
+
     async def _send_frame(self, frame: proto.Frame) -> None:
         await self.async_send_bytes(frame.to_bytes())
+
+    async def _send_frame_to(self, addr, frame: proto.Frame) -> None:
+        await self.async_send_bytes_to(frame.to_bytes(), addr)
 
     async def _send_command(self, body: bytes) -> None:
         seq = self._next_seq()
@@ -345,7 +358,7 @@ class TecomHub:
     # Printer mode parsing
     # -------------------------
 
-    def _on_printer_datagram(self, data: bytes) -> None:
+    def _on_printer_datagram(self, data: bytes, addr=None) -> None:
         try:
             text = data.decode("utf-8", errors="ignore")
         except Exception:
@@ -388,19 +401,54 @@ class TecomHub:
         for fr in frames:
             self._handle_ctplus_frame(fr)
 
-    def _on_ctplus_datagram(self, data: bytes) -> None:
-        fr = proto.parse_frame(data)
-        if not fr:
-            self.state.last_event = f"RAW {data.hex()}"
-            self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": data.hex(), "len": len(data)})
-            self._notify()
-            return
-        self._handle_ctplus_frame(fr)
+    def _extract_frames(self, buf: bytes) -> list[proto.Frame]:
+        """Extract one or more CTPlus frames from a byte buffer.
 
-    def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
+        Observed behaviour: some UDP datagrams may contain multiple frames back-to-back.
+        We scan for SYNC and validate CRC to find frame boundaries.
+        """
+        frames: list[proto.Frame] = []
+        i = 0
+        while i < len(buf):
+            j = buf.find(bytes([proto.SYNC]), i)
+            if j < 0:
+                break
+            found = False
+            # Minimum frame is 7 bytes (sync + hdr + crc)
+            for end in range(j + 7, min(len(buf), j + 2048) + 1):
+                fr = proto.parse_frame(buf[j:end])
+                if fr:
+                    frames.append(fr)
+                    i = end
+                    found = True
+                    break
+            if not found:
+                # Skip this sync byte and continue searching
+                i = j + 1
+        return frames
+
+    def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:
+        frames = self._extract_frames(data)
+        if not frames:
+            # Fall back to single-frame parse attempt for debugging visibility
+            fr = proto.parse_frame(data)
+            if fr:
+                frames = [fr]
+            else:
+                self.state.last_event = f"RAW {data.hex()}"
+                self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": data.hex(), "len": len(data)})
+                self._notify()
+                return
+        for fr in frames:
+            self._handle_ctplus_frame(fr, reply_addr=addr)
+
+    def _handle_ctplus_frame(self, fr: proto.Frame, reply_addr=None) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
             # ACK required
-            asyncio.create_task(self._send_frame(proto.build_ack(fr.seq)))
+            if reply_addr:
+                asyncio.create_task(self._send_frame_to(reply_addr, proto.build_ack(fr.seq)))
+            else:
+                asyncio.create_task(self._send_frame(proto.build_ack(fr.seq)))
 
             # input status response
             resp_in = proto.parse_input_status_response(fr.body)
