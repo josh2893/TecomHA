@@ -290,21 +290,8 @@ class TecomHub:
             raise TecomConnectionError("Transport not started")
         await self._transport_obj.async_send(payload)
 
-    async def async_send_bytes_to(self, payload: bytes, addr) -> None:
-        """Send bytes to a specific UDP peer (addr=(ip,port))."""
-        if not self._transport_obj:
-            raise TecomConnectionError("Transport not started")
-        try:
-            await self._transport_obj.async_send(payload, addr=addr)
-        except TypeError:
-            # Transport doesn't support addr override (e.g. older TCP implementation)
-            await self._transport_obj.async_send(payload)
-
     async def _send_frame(self, frame: proto.Frame) -> None:
         await self.async_send_bytes(frame.to_bytes())
-
-    async def _send_frame_to(self, addr, frame: proto.Frame) -> None:
-        await self.async_send_bytes_to(frame.to_bytes(), addr)
 
     async def _send_command(self, body: bytes) -> None:
         seq = self._next_seq()
@@ -358,7 +345,7 @@ class TecomHub:
     # Printer mode parsing
     # -------------------------
 
-    def _on_printer_datagram(self, data: bytes, addr=None) -> None:
+    def _on_printer_datagram(self, data: bytes) -> None:
         try:
             text = data.decode("utf-8", errors="ignore")
         except Exception:
@@ -375,83 +362,89 @@ class TecomHub:
     # CTPlus parsing
     # -------------------------
 
+    def _scan_ctplus_frames(self, buf: bytes) -> tuple[list[proto.Frame], bytes]:
+        """Extract one or more CTPlus frames from a bytes buffer.
+
+        CTPlus is framed by a SYNC byte (0x5E) + CRC16/Modbus.
+        Some UDP datagrams (and TCP reads) can contain multiple frames.
+        Returns (frames, remaining_bytes).
+        """
+        if not buf:
+            return [], b""
+
+        frames: list[proto.Frame] = []
+        i = 0
+        sync = bytes([proto.SYNC])
+
+        while True:
+            j = buf.find(sync, i)
+            if j < 0:
+                # No more sync bytes; drop everything before i (already consumed)
+                return frames, buf[i:]
+
+            found = False
+            # Minimum frame length is 7 (sync + 4 header bytes + crc16)
+            # Try progressively longer slices until CRC matches.
+            max_end = min(len(buf), j + 2048)
+            for end in range(j + 7, max_end + 1):
+                fr = proto.parse_frame(buf[j:end])
+                if fr:
+                    frames.append(fr)
+                    i = end
+                    found = True
+                    break
+
+            if not found:
+                # Keep from the sync byte onward (could be a partial frame in TCP buffer)
+                return frames, buf[j:]
+
     def _on_ctplus_bytes(self, data: bytes) -> None:
-        # Experimental TCP support via sync+CRC scan
+        # TCP support via sync+CRC scan (supports multiple frames per read)
         if not data:
             return
         self._tcp_buf += data
-        buf = self._tcp_buf
-        frames: list[proto.Frame] = []
-        i = 0
-        while True:
-            j = buf.find(bytes([proto.SYNC]), i)
-            if j < 0:
-                break
-            found = False
-            for end in range(j + 7, min(len(buf), j + 2048) + 1):
-                fr = proto.parse_frame(buf[j:end])
-                if fr:
-                    frames.append(fr)
-                    i = end
-                    found = True
-                    break
-            if not found:
-                break
-        self._tcp_buf = buf[i:]
+        frames, rem = self._scan_ctplus_frames(self._tcp_buf)
+        self._tcp_buf = rem
         for fr in frames:
             self._handle_ctplus_frame(fr)
 
-    def _extract_frames(self, buf: bytes) -> list[proto.Frame]:
-        """Extract one or more CTPlus frames from a byte buffer.
-
-        Observed behaviour: some UDP datagrams may contain multiple frames back-to-back.
-        We scan for SYNC and validate CRC to find frame boundaries.
-        """
-        frames: list[proto.Frame] = []
-        i = 0
-        while i < len(buf):
-            j = buf.find(bytes([proto.SYNC]), i)
-            if j < 0:
-                break
-            found = False
-            # Minimum frame is 7 bytes (sync + hdr + crc)
-            for end in range(j + 7, min(len(buf), j + 2048) + 1):
-                fr = proto.parse_frame(buf[j:end])
-                if fr:
-                    frames.append(fr)
-                    i = end
-                    found = True
-                    break
-            if not found:
-                # Skip this sync byte and continue searching
-                i = j + 1
-        return frames
-
-    def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:
-        frames = self._extract_frames(data)
+    def _on_ctplus_datagram(self, data: bytes) -> None:
+        # UDP datagrams can contain multiple CTPlus frames.
+        frames, rem = self._scan_ctplus_frames(data)
         if not frames:
-            # Fall back to single-frame parse attempt for debugging visibility
-            fr = proto.parse_frame(data)
-            if fr:
-                frames = [fr]
-            else:
-                self.state.last_event = f"RAW {data.hex()}"
-                self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": data.hex(), "len": len(data)})
-                self._notify()
-                return
-        for fr in frames:
-            self._handle_ctplus_frame(fr, reply_addr=addr)
+            self.state.last_event = f"RAW {data.hex()}"
+            self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": data.hex(), "len": len(data)})
+            self._notify()
+            return
 
-    def _handle_ctplus_frame(self, fr: proto.Frame, reply_addr=None) -> None:
+        for fr in frames:
+            self._handle_ctplus_frame(fr)
+
+        # If there's leftover bytes that didn't parse, surface them for troubleshooting.
+        if rem and rem != data:
+            self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": rem.hex(), "len": len(rem)})
+
+    def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
-            # ACK required
-            if reply_addr:
-                asyncio.create_task(self._send_frame_to(reply_addr, proto.build_ack(fr.seq)))
-            else:
+            # IMPORTANT:
+            # Packet captures show CTPlus only ACKs *event broadcast* frames (e.g. bodies starting 0x0F 0x0C...),
+            # not polled status responses (0x0A input status, 0x67 relay status) or other startup data.
+            resp_in = proto.parse_input_status_response(fr.body)
+            resp_rel = proto.parse_relay_status_response(fr.body)
+            ev = proto.parse_event(fr.body)
+
+            should_ack = False
+            if ev is not None:
+                should_ack = True
+            elif fr.body and fr.body[0] == 0x0F:
+                should_ack = True
+            elif 0x8A in fr.body:
+                should_ack = True
+
+            if should_ack:
                 asyncio.create_task(self._send_frame(proto.build_ack(fr.seq)))
 
             # input status response
-            resp_in = proto.parse_input_status_response(fr.body)
             if resp_in:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
@@ -462,7 +455,6 @@ class TecomHub:
                 return
 
             # relay status response
-            resp_rel = proto.parse_relay_status_response(fr.body)
             if resp_rel:
                 start, statuses = resp_rel
                 for i, s in enumerate(statuses):
@@ -473,7 +465,6 @@ class TecomHub:
                 return
 
             # events
-            ev = proto.parse_event(fr.body)
             if ev:
                 code, obj = ev
                 if code == 0x96:
@@ -497,6 +488,7 @@ class TecomHub:
                 self._notify()
                 return
 
+            # Unknown 0x40 frame (data but not parsed)
             self.state.last_event = f"CTPlus 0x40 {fr.body.hex()}"
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": fr.body.hex(), "len": len(fr.body)})
             self._notify()
@@ -512,6 +504,7 @@ class TecomHub:
 
     # -------------------------
     # Control helpers
+
     # -------------------------
 
     async def async_set_relay(self, relay: int, on: bool) -> None:
