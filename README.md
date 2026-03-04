@@ -2,12 +2,7 @@
 
 This is an **experimental** custom integration based on observed CTPlus ↔ ChallengerPlus packet captures with **Encryption=None**.
 
-## Implemented in v2.0.10 (this zip)
-
-- **Fix:** Inputs now attach to the ChallengerPlus device in HA (not "Ungrouped")
-- **Fix:** CTPlus events now include a readable `message`/`text` field (plus raw hex for debugging)
-- **Fix:** ACK all CTPlus `0x40` frames to improve CommsPath stability
-- **Fix:** Input poll status uses `0x20` bit as sealed/normal; HA `on=True` represents unsealed/active
+## Implemented in v0.2.0 (this zip)
 - **Inputs**
   - Poll status (request range) and update HA binary_sensors
   - Real-time events: sealed (0x96) / unsealed (0x97)

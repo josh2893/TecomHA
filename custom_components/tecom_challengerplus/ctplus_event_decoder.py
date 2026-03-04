@@ -1,36 +1,30 @@
-"""CTPlus event decoder.
+"""Best-effort CTPlus event decoding to human-readable text.
 
-Goal: make Home Assistant event payloads readable (similar to Printer mode).
-We keep everything best-effort and non-destructive: always include raw hex.
-
-As we learn more codes from real panels, this can be expanded.
+This does not attempt to fully replicate CTPlus/Forcefield wording yet, but provides
+useful messages for common event codes and keeps raw fields for debugging.
 """
 
 from __future__ import annotations
 
-
 def decode_ctplus_event(code: int, obj: int, raw_hex: str) -> dict:
-    """Decode CTPlus event (code/object) into a friendly payload."""
-
     code_hex = f"0x{code:02X}"
-    obj_hex = f"0x{obj:02X}"
+    obj_hex = f"0x{obj:04X}"
 
-    # Minimal mapping for common, already-handled codes in hub.py
+    # Known/common mappings (expand as we confirm more from your logs)
     if code == 0x96:
-        message = f"Input {obj} sealed (normal)"
+        text = f"Input {obj} Sealed"
     elif code == 0x97:
-        message = f"Input {obj} unsealed (active)"
+        text = f"Input {obj} Unsealed"
     elif code == 0x84:
-        message = f"Relay {obj} ON"
+        text = f"Relay {obj} On"
     elif code == 0x85:
-        message = f"Relay {obj} OFF"
+        text = f"Relay {obj} Off"
     elif code == 0x0B:
-        message = f"Area {obj} armed"
+        text = f"Area {obj} Armed"
     elif code == 0x0C:
-        message = f"Area {obj} disarmed"
+        text = f"Area {obj} Disarmed"
     else:
-        # Unknown event: still provide a human-readable summary
-        message = f"CTPlus event {code_hex} object {obj} ({obj_hex})"
+        text = f"CTPlus event {code_hex} object {obj} ({obj_hex})"
 
     return {
         "code": code,
@@ -38,7 +32,6 @@ def decode_ctplus_event(code: int, obj: int, raw_hex: str) -> dict:
         "object": obj,
         "object_hex": obj_hex,
         "raw": raw_hex,
-        # Printer-mode-like text to make listening in HA easy
-        "message": message,
-        "text": message,
+        "text": text,
+        "message": text,
     }

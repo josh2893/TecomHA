@@ -180,6 +180,8 @@ class TecomChallengerPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
+            # Force reload immediately after options are saved (avoids manual reload in UI)
+            self.hass.async_create_task(self.hass.config_entries.async_reload(self._entry.entry_id))
             host = (user_input.get(CONF_HOST) or "").strip()
             if not host:
                 errors[CONF_HOST] = "required"
@@ -204,6 +206,8 @@ class TecomChallengerPlusOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
+            # Force reload immediately after options are saved (avoids manual reload in UI)
+            self.hass.async_create_task(self.hass.config_entries.async_reload(self._entry.entry_id))
             return self.async_create_entry(title="", data=user_input)
 
         defaults = {**self._entry.data, **self._entry.options}

@@ -38,7 +38,6 @@ class TecomInputBinarySensor(BinarySensorEntity):
             self._unsub()
             self._unsub = None
 
-
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(

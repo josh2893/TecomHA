@@ -163,11 +163,11 @@ class TecomHub:
         self._listeners: set[UpdateCallback] = set()
 
         self._transport_obj = None  # runtime transport
+        self._udp_last_peer = None  # last UDP peer (ip, port)
         self._seq_out = 1
         self._poll_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._tcp_buf: bytes = b""  # only used for TCP
-        self._udp_last_addr = None  # (ip, port) last sender in UDP mode
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -287,32 +287,13 @@ class TecomHub:
         if not self.hass.services.has_service(DOMAIN, "send_raw_hex"):
             self.hass.services.async_register(DOMAIN, "send_raw_hex", async_send_raw)
 
-    async def async_send_bytes(self, payload: bytes) -> None:
+    async def async_send_bytes(self, payload: bytes, addr=None) -> None:  # noqa: ANN001
         if not self._transport_obj:
             raise TecomConnectionError("Transport not started")
-        _LOGGER.debug("CTPlus TX len=%s hex=%s", len(payload), payload[:128].hex())
-        await self._transport_obj.async_send(payload)
-
-    async def _send_frame_reply(self, frame: proto.Frame) -> None:
-        """Send a frame back to the last UDP sender if available (reply-to-sender)."""
-        if self.transport != TRANSPORT_UDP:
-            await self._send_frame(frame)
-            return
-        if not self._transport_obj:
-            raise TecomConnectionError("Transport not started")
-
-        addr = self._udp_last_addr
-        payload = frame.to_bytes()
-        try:
-            if addr and hasattr(self._transport_obj, "async_send_to"):
-                _LOGGER.debug("CTPlus TX(repl) len=%s to=%s hex=%s", len(payload), addr, payload[:128].hex())
-                await self._transport_obj.async_send_to(payload, addr)
-            else:
-                _LOGGER.debug("CTPlus TX(repl) len=%s hex=%s", len(payload), payload[:128].hex())
-                await self._transport_obj.async_send(payload)
-        except Exception:
-            _LOGGER.exception("Failed to send UDP reply frame")
-
+        if addr is not None and hasattr(self._transport_obj, 'async_sendto'):
+            await self._transport_obj.async_sendto(payload, addr)
+        else:
+            await self._transport_obj.async_send(payload)
     async def _send_frame(self, frame: proto.Frame) -> None:
         await self.async_send_bytes(frame.to_bytes())
 
@@ -325,19 +306,15 @@ class TecomHub:
     # -------------------------
 
     async def _heartbeat_loop(self) -> None:
-        # Many panels supervise comms paths very aggressively. A lightweight "ping"
-        # that the panel definitely understands is safer than an empty heartbeat frame.
-        # We send a tiny input-status request for Input 1..1 as a keepalive.
-        interval = 3
+        """Send CTPlus keepalive frequently so panel does not declare path down."""
         while True:
             try:
-                await asyncio.sleep(interval)
-                await self._send_command(proto.cmd_request_input_status(1, 1))
+                await self._send_frame(proto.build_heartbeat(self._next_seq()))
+                await asyncio.sleep(3)
             except asyncio.CancelledError:
                 return
             except Exception:
                 _LOGGER.exception("Heartbeat loop error")
-
     async def _poll_loop(self) -> None:
         while True:
             try:
@@ -372,7 +349,7 @@ class TecomHub:
     # Printer mode parsing
     # -------------------------
 
-    def _on_printer_datagram(self, data: bytes) -> None:
+    def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
         except Exception:
@@ -436,10 +413,9 @@ class TecomHub:
             self._handle_ctplus_frame(fr)
 
     def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
-        # UDP datagrams can contain multiple CTPlus frames.
         if addr is not None:
-            self._udp_last_addr = addr
-        _LOGGER.debug("CTPlus UDP RX len=%s from=%s hex=%s", len(data), addr, data[:128].hex())
+            self._udp_last_peer = addr
+        # UDP datagrams can contain multiple CTPlus frames.
         frames, rem = self._scan_ctplus_frames(data)
         if not frames:
             self.state.last_event = f"RAW {data.hex()}"
@@ -456,22 +432,16 @@ class TecomHub:
 
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
-            # Parse possible payload types carried in 0x40 frames
-            resp_in = proto.parse_input_status_response(fr.body)
-            resp_rel = proto.parse_relay_status_response(fr.body)
-            ev = proto.parse_event(fr.body)
-
-            # ACK handling (critical for CommsPath stability):
-            # Some panels expect TYPE_EVENT_OR_DATA (0x40) frames to be acknowledged.
-            asyncio.create_task(self._send_frame_reply(proto.build_ack(fr.seq)))
-
+            # Always ACK 0x40 frames (panel expects this for comms path health).
+            asyncio.create_task(
+                self.async_send_bytes(proto.build_ack(fr.seq).to_bytes(), addr=self._udp_last_peer)
+            )
             # input status response
             if resp_in:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
                     inp = start + i
-                    # 0x20 observed as SEALED/NORMAL; Home Assistant on=True when UNSEALED/ACTIVE
-                    self.state.inputs[inp] = not bool(s & 0x20)
+                    self.state.inputs[inp] = (not bool(s & 0x20))  # 0x20 appears to mean SEALED/NORMAL
                 self.state.last_event = f"Inputs {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
@@ -503,13 +473,11 @@ class TecomHub:
                     self.state.areas[obj] = "disarmed"
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
-                self.state.last_event = payload.get("message")
 
-                # Main event (keeps compatibility with existing automations)
+                self.state.last_event = payload.get('text') or payload.get('message')
                 self.hass.bus.async_fire(f"{DOMAIN}_event", payload)
-                # Extra event name for CTPlus-specific listening
+                # Extra event name to make filtering easier in HA
                 self.hass.bus.async_fire(f"{DOMAIN}_ctplus_event", payload)
-
                 self._notify()
                 return
 
