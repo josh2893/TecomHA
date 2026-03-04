@@ -27,8 +27,14 @@ class TecomTransportBase:
 # -------------------------
 
 class _UDPProtocol(asyncio.DatagramProtocol):
-    def __init__(self, on_datagram: Callable[[bytes], None]) -> None:
+    def __init__(self, on_datagram: Callable[[bytes], None], loop: asyncio.AbstractEventLoop) -> None:
         self.on_datagram = on_datagram
+        self._loop = loop
+        self._closed: asyncio.Future[None] = loop.create_future()
+
+    @property
+    def closed(self) -> "asyncio.Future[None]":
+        return self._closed
 
     def datagram_received(self, data: bytes, addr):  # noqa: ANN001
         try:
@@ -36,6 +42,11 @@ class _UDPProtocol(asyncio.DatagramProtocol):
         except TypeError:
             # Backward compat: older callbacks accept only data
             self.on_datagram(data)
+
+    def connection_lost(self, exc):  # noqa: ANN001
+        if not self._closed.done():
+            self._closed.set_result(None)
+
 
 
 class TecomUDPRaw(TecomTransportBase):
@@ -54,18 +65,26 @@ class TecomUDPRaw(TecomTransportBase):
         self._remote = (remote_host, remote_port)
         self._on = on_datagram
         self._transport: asyncio.DatagramTransport | None = None
+        self._protocol: _UDPProtocol | None = None
 
     async def async_start(self) -> None:
         loop = asyncio.get_running_loop()
-        self._transport, _ = await loop.create_datagram_endpoint(
-            lambda: _UDPProtocol(self._on),
+        protocol = _UDPProtocol(self._on, loop)
+        self._transport, self._protocol = await loop.create_datagram_endpoint(
+            lambda: protocol,
             local_addr=(self._bind_host, self._bind_port),
+            reuse_port=True,
         )
 
     async def async_stop(self) -> None:
         if self._transport:
             self._transport.close()
+            # Ensure the socket is actually released before returning.
+            if self._protocol is not None:
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._protocol.closed, timeout=3.0)
             self._transport = None
+            self._protocol = None
 
     async def async_send(self, data: bytes) -> None:
         if not self._transport:

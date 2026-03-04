@@ -10,6 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
+
+PENDING_RELOAD_TASK = "pending_reload_task"
 from .hub import TecomHub
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,7 +42,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
+    # Avoid rapid double-reloads causing UDP bind collisions.
+    pending = hass.data.setdefault(DOMAIN, {}).get(PENDING_RELOAD_TASK)
+    if pending and not pending.done():
+        pending.cancel()
+
+    async def _delayed_reload() -> None:
+        await asyncio.sleep(0.5)
+        await hass.config_entries.async_reload(entry.entry_id)
+
+    task = hass.async_create_task(_delayed_reload())
+    hass.data[DOMAIN][PENDING_RELOAD_TASK] = task
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 from dataclasses import dataclass
@@ -208,9 +209,13 @@ class TecomHub:
     async def async_stop(self) -> None:
         if self._poll_task:
             self._poll_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._poll_task
             self._poll_task = None
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._heartbeat_task
             self._heartbeat_task = None
 
         if self._transport_obj:
