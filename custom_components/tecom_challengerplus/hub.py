@@ -167,6 +167,7 @@ class TecomHub:
         self._poll_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._tcp_buf: bytes = b""  # only used for TCP
+        self._udp_last_addr = None  # (ip, port) last sender in UDP mode
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -289,7 +290,28 @@ class TecomHub:
     async def async_send_bytes(self, payload: bytes) -> None:
         if not self._transport_obj:
             raise TecomConnectionError("Transport not started")
+        _LOGGER.debug("CTPlus TX len=%s hex=%s", len(payload), payload[:128].hex())
         await self._transport_obj.async_send(payload)
+
+    async def _send_frame_reply(self, frame: proto.Frame) -> None:
+        """Send a frame back to the last UDP sender if available (reply-to-sender)."""
+        if self.transport != TRANSPORT_UDP:
+            await self._send_frame(frame)
+            return
+        if not self._transport_obj:
+            raise TecomConnectionError("Transport not started")
+
+        addr = self._udp_last_addr
+        payload = frame.to_bytes()
+        try:
+            if addr and hasattr(self._transport_obj, "async_send_to"):
+                _LOGGER.debug("CTPlus TX(repl) len=%s to=%s hex=%s", len(payload), addr, payload[:128].hex())
+                await self._transport_obj.async_send_to(payload, addr)
+            else:
+                _LOGGER.debug("CTPlus TX(repl) len=%s hex=%s", len(payload), payload[:128].hex())
+                await self._transport_obj.async_send(payload)
+        except Exception:
+            _LOGGER.exception("Failed to send UDP reply frame")
 
     async def _send_frame(self, frame: proto.Frame) -> None:
         await self.async_send_bytes(frame.to_bytes())
@@ -303,10 +325,14 @@ class TecomHub:
     # -------------------------
 
     async def _heartbeat_loop(self) -> None:
+        # Many panels supervise comms paths very aggressively. A lightweight "ping"
+        # that the panel definitely understands is safer than an empty heartbeat frame.
+        # We send a tiny input-status request for Input 1..1 as a keepalive.
+        interval = 3
         while True:
             try:
-                await asyncio.sleep(max(5, min(30, self.poll_interval)))
-                await self._send_frame(proto.build_heartbeat(self._next_seq()))
+                await asyncio.sleep(interval)
+                await self._send_command(proto.cmd_request_input_status(1, 1))
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -409,8 +435,11 @@ class TecomHub:
         for fr in frames:
             self._handle_ctplus_frame(fr)
 
-    def _on_ctplus_datagram(self, data: bytes) -> None:
+    def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         # UDP datagrams can contain multiple CTPlus frames.
+        if addr is not None:
+            self._udp_last_addr = addr
+        _LOGGER.debug("CTPlus UDP RX len=%s from=%s hex=%s", len(data), addr, data[:128].hex())
         frames, rem = self._scan_ctplus_frames(data)
         if not frames:
             self.state.last_event = f"RAW {data.hex()}"
@@ -434,7 +463,7 @@ class TecomHub:
 
             # ACK handling (critical for CommsPath stability):
             # Some panels expect TYPE_EVENT_OR_DATA (0x40) frames to be acknowledged.
-            asyncio.create_task(self._send_frame(proto.build_ack(fr.seq)))
+            asyncio.create_task(self._send_frame_reply(proto.build_ack(fr.seq)))
 
             # input status response
             if resp_in:

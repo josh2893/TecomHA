@@ -15,6 +15,24 @@ class TecomTransportBase:
     async def async_start(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
+    def _on_datagram_received(self, data: bytes, addr) -> None:  # noqa: ANN001
+        # Track the most recent peer so callers can reply-to-sender if needed.
+        self._last_peer = addr
+        # Support older callbacks that accept only (data)
+        try:
+            self._on(data, addr)
+        except TypeError:
+            self._on(data)
+
+    def get_last_peer(self):  # noqa: ANN001
+        return self._last_peer
+
+    async def async_send_to(self, data: bytes, addr) -> None:  # noqa: ANN001
+        """Send a UDP datagram to a specific address (ip, port)."""
+        if not self._transport:
+            raise TecomConnectionError("UDP transport not started")
+        self._transport.sendto(data, addr)
+
     async def async_stop(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
@@ -27,11 +45,12 @@ class TecomTransportBase:
 # -------------------------
 
 class _UDPProtocol(asyncio.DatagramProtocol):
-    def __init__(self, on_datagram: Callable[[bytes], None]) -> None:
+    def __init__(self, on_datagram: Callable[[bytes, tuple], None]) -> None:
         self.on_datagram = on_datagram
 
     def datagram_received(self, data: bytes, addr):  # noqa: ANN001
-        self.on_datagram(data)
+        self.on_datagram(data, addr)
+
 
 
 class TecomUDPRaw(TecomTransportBase):
@@ -49,12 +68,13 @@ class TecomUDPRaw(TecomTransportBase):
         self._bind_port = bind_port
         self._remote = (remote_host, remote_port)
         self._on = on_datagram
+        self._last_peer = None  # (ip, port) of most recent datagram sender
         self._transport: asyncio.DatagramTransport | None = None
 
     async def async_start(self) -> None:
         loop = asyncio.get_running_loop()
         self._transport, _ = await loop.create_datagram_endpoint(
-            lambda: _UDPProtocol(self._on),
+            lambda: _UDPProtocol(self._on_datagram_received),
             local_addr=(self._bind_host, self._bind_port),
         )
 
