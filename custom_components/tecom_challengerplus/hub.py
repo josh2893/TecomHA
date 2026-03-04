@@ -438,9 +438,16 @@ class TecomHub:
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
             # Always ACK 0x40 frames (panel expects this for comms path health).
-            asyncio.create_task(
-                self.async_send_bytes(proto.build_ack(fr.seq).to_bytes(), addr=self._udp_last_peer)
-            )
+            if self._udp_last_peer is not None:
+                asyncio.create_task(
+                    self.async_send_bytes(proto.build_ack(fr.seq).to_bytes(), addr=self._udp_last_peer)
+                )
+
+            # Attempt to classify this 0x40 payload as a status response or event.
+            resp_in = proto.parse_input_status_response(fr.body)
+            resp_rel = proto.parse_relay_status_response(fr.body)
+            ev = proto.parse_event(fr.body)
+
             # input status response
             if resp_in:
                 start, statuses = resp_in
