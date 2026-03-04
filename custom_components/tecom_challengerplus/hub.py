@@ -41,6 +41,7 @@ from .const import (
 from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
 from . import ctplus_protocol as proto
+from .ctplus_event_decoder import decode_ctplus_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -426,30 +427,22 @@ class TecomHub:
 
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
-            # IMPORTANT:
-            # Packet captures show CTPlus only ACKs *event broadcast* frames (e.g. bodies starting 0x0F 0x0C...),
-            # not polled status responses (0x0A input status, 0x67 relay status) or other startup data.
+            # Parse possible payload types carried in 0x40 frames
             resp_in = proto.parse_input_status_response(fr.body)
             resp_rel = proto.parse_relay_status_response(fr.body)
             ev = proto.parse_event(fr.body)
 
-            should_ack = False
-            if ev is not None:
-                should_ack = True
-            elif fr.body and fr.body[0] == 0x0F:
-                should_ack = True
-            elif 0x8A in fr.body:
-                should_ack = True
-
-            if should_ack:
-                asyncio.create_task(self._send_frame(proto.build_ack(fr.seq)))
+            # ACK handling (critical for CommsPath stability):
+            # Some panels expect TYPE_EVENT_OR_DATA (0x40) frames to be acknowledged.
+            asyncio.create_task(self._send_frame(proto.build_ack(fr.seq)))
 
             # input status response
             if resp_in:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
                     inp = start + i
-                    self.state.inputs[inp] = bool(s & 0x20)  # observed bit
+                    # 0x20 observed as SEALED/NORMAL; Home Assistant on=True when UNSEALED/ACTIVE
+                    self.state.inputs[inp] = not bool(s & 0x20)
                 self.state.last_event = f"Inputs {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
@@ -480,11 +473,14 @@ class TecomHub:
                 elif code == 0x0C:
                     self.state.areas[obj] = "disarmed"
 
-                self.state.last_event = f"Event 0x{code:02X} obj {obj}"
-                self.hass.bus.async_fire(
-                    f"{DOMAIN}_event",
-                    {"code": code, "object": obj, "raw": fr.body.hex()},
-                )
+                payload = decode_ctplus_event(code, obj, fr.body.hex())
+                self.state.last_event = payload.get("message")
+
+                # Main event (keeps compatibility with existing automations)
+                self.hass.bus.async_fire(f"{DOMAIN}_event", payload)
+                # Extra event name for CTPlus-specific listening
+                self.hass.bus.async_fire(f"{DOMAIN}_ctplus_event", payload)
+
                 self._notify()
                 return
 

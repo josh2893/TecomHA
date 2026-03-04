@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN
 
@@ -36,6 +37,16 @@ class TecomInputBinarySensor(BinarySensorEntity):
         if self._unsub:
             self._unsub()
             self._unsub = None
+
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._hub.entry.unique_id or self._hub.entry.entry_id)},
+            name=self._hub.entry.title,
+            manufacturer="Aritech / Tecom",
+            model="ChallengerPlus",
+        )
 
     @property
     def is_on(self):
