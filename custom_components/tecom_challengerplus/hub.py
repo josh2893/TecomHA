@@ -203,17 +203,17 @@ class TecomHub:
         self._register_services()
 
         if self.mode == MODE_CTPLUS:
-    # Kick an immediate first poll so entities don't sit 'unknown' until the poll loop runs.
-    try:
-        if self.inputs_count > 0:
-            await self.async_request_inputs(1, self.inputs_count)
-        if getattr(self, 'relay_poll_ranges', None):
-            for s, e in self.relay_poll_ranges:
-                await self.async_request_relays(s, e)
-        if getattr(self, 'areas_count', 0) and self.areas_count > 0:
-            await self.async_request_areas(1, self.areas_count)
-    except Exception:
-        _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
+            # Kick an immediate first poll so entities don't sit 'unknown' until the poll loop runs.
+            try:
+                if self.inputs_count > 0:
+                    await self.async_request_inputs(1, self.inputs_count)
+                if getattr(self, 'relay_poll_ranges', None):
+                    for s, e in self.relay_poll_ranges:
+                        await self.async_request_relays(s, e)
+                if getattr(self, 'areas_count', 0) and self.areas_count > 0:
+                    await self.async_request_areas(1, self.areas_count)
+            except Exception:
+                _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
 
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -493,16 +493,16 @@ async def async_request_areas(self, start: int, end: int) -> None:
                 return
 
 
-# area status response
-if resp_area:
-    start, words = resp_area
-    for i, w in enumerate(words):
-        area = start + i
-        # Best-effort mapping: 0 => disarmed, non-zero => armed
-        self.state.areas[area] = "disarmed" if w == 0 else "armed"
-    self.state.last_event = f"Areas {start}-{start+len(words)-1}"
-    self._notify()
-    return
+            # area status response
+            if resp_area:
+                start, words = resp_area
+                for i, w in enumerate(words):
+                    area = start + i
+                    # Best-effort mapping: 0 => disarmed, non-zero => armed
+                    self.state.areas[area] = "disarmed" if w == 0 else "armed"
+                self.state.last_event = f"Areas {start}-{start+len(words)-1}"
+                self._notify()
+                return
             # events
             if ev:
                 code, obj = ev
