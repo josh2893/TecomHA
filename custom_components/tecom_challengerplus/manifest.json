@@ -1,11 +1,11 @@
 {
   "codeowners": [],
   "config_flow": true,
-  "documentation": "https://github.com/josh2893/TecomHA",
+  "documentation": "https://github.com/josh2893/TecomHA/wiki/README",
   "domain": "tecom_challengerplus",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/josh2893/TecomHA/issues",
   "name": "Tecom ChallengerPlus",
   "requirements": [],
-  "version": "2.0.18"
+  "version": "2.0.19"
 }

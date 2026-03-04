@@ -12,7 +12,6 @@ from homeassistant.helpers import device_registry as dr
 from .const import DOMAIN
 
 PENDING_RELOAD_TASK = "pending_reload_task"
-from .hub import TecomHub
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +19,7 @@ PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "lock", "alarm_cont
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tecom ChallengerPlus from a config entry."""
+    from .hub import TecomHub  # local import to keep config flow loadable
     hub = TecomHub(hass, entry)
     await hub.async_start()
 

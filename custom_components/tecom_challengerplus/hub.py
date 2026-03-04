@@ -326,10 +326,6 @@ class TecomHub:
                 await asyncio.sleep(self.poll_interval)
                 if self.inputs_count > 0:
                     await self.async_request_inputs(1, self.inputs_count)
-                if getattr(self, 'areas_count', 0) > 0:
-                    # Poll areas in blocks of 4 (matches CTPlus observed behaviour)
-                    for a in range(1, int(self.areas_count) + 1, 4):
-                        await self.async_request_areas(a, min(4, int(self.areas_count) - a + 1))
                 if getattr(self, 'relay_poll_ranges', None):
                     for s, e in self.relay_poll_ranges:
                         await self.async_request_relays(s, e)
@@ -346,12 +342,7 @@ class TecomHub:
             await self._send_command(proto.cmd_request_input_status(cur, chunk_end))
             cur = chunk_end + 1
 
-        async def async_request_areas(self, start_area: int, count: int = 4) -> None:
-        """Request a block of Area statuses."""
-        body = proto.cmd_request_area_status(start_area, count)
-        await self.async_send_command(body)
-
-async def async_request_relays(self, start: int, end: int) -> None:
+    async def async_request_relays(self, start: int, end: int) -> None:
         max_chunk = 128
         cur = start
         while cur <= end:
@@ -455,7 +446,6 @@ async def async_request_relays(self, start: int, end: int) -> None:
             # Attempt to classify this 0x40 payload as a status response or event.
             resp_in = proto.parse_input_status_response(fr.body)
             resp_rel = proto.parse_relay_status_response(fr.body)
-            resp_area = proto.parse_area_status_response(fr.body)
             ev = proto.parse_event(fr.body)
 
             # input status response
@@ -475,18 +465,6 @@ async def async_request_relays(self, start: int, end: int) -> None:
                     relay = start + i
                     self.state.relays[relay] = bool(s & 0x01)  # observed bit
                 self.state.last_event = f"Relays {start}-{start+len(statuses)-1}"
-                self._notify()
-                return
-
-            # area status response
-            if resp_area:
-                start_area, words = resp_area
-                for i, w in enumerate(words):
-                    area = start_area + i
-                    # Best-effort mapping: 0 => disarmed, non-zero => armed.
-                    # Raw word is exposed via last_event for debugging.
-                    self.state.areas[area] = "disarmed" if w == 0 else "armed"
-                self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}: " + ",".join(hex(w) for w in words)
                 self._notify()
                 return
 
