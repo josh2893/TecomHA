@@ -203,7 +203,7 @@ class TecomHub:
         self._register_services()
 
         if self.mode == MODE_CTPLUS:
-            # Kick an immediate first poll so entities don't sit 'unknown' until the first interval.
+            # Initial poll so entities don't sit 'unknown' until the first interval.
             try:
                 if self.inputs_count > 0:
                     await self.async_request_inputs(1, self.inputs_count)
@@ -212,8 +212,12 @@ class TecomHub:
                     for rs, re_ in self.relay_poll_ranges:
                         await self.async_request_relays(rs, re_)
 
-                if getattr(self, "areas_count", 0) and self.areas_count > 0 and hasattr(proto, "cmd_request_area_status"):
-                    await self._send_command(proto.cmd_request_area_status(1, min(4, self.areas_count)))
+                if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                    start = 1
+                    while start <= self.areas_count:
+                        count = min(4, self.areas_count - start + 1)
+                        await self._send_command(proto.cmd_request_area_status(start, count))
+                        start += count
             except Exception:
                 _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
 
@@ -345,9 +349,13 @@ async def _poll_loop(self) -> None:
                 for rs, re_ in self.relay_poll_ranges:
                     await self.async_request_relays(rs, re_)
 
-            # Areas: lightweight poll (first 4) if supported and configured.
-            if getattr(self, "areas_count", 0) and self.areas_count > 0 and hasattr(proto, "cmd_request_area_status"):
-                await self._send_command(proto.cmd_request_area_status(1, min(4, self.areas_count)))
+            if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                # CTPlus observed: request up to 4 areas per call.
+                start = 1
+                while start <= self.areas_count:
+                    count = min(4, self.areas_count - start + 1)
+                    await self._send_command(proto.cmd_request_area_status(start, count))
+                    start += count
 
             await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:
@@ -531,7 +539,6 @@ async def _poll_loop(self) -> None:
     # Control helpers
 
     # -------------------------
-
     async def async_set_relay(self, relay: int, on: bool) -> None:
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Relay control requires CTPlus mode")
