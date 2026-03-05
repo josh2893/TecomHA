@@ -164,3 +164,41 @@ def parse_event(body: bytes) -> Optional[Tuple[int, int]]:
         return code, obj
 
     return None
+
+
+# -------------------------
+# Area status (observed)
+# -------------------------
+
+def cmd_request_area_status(start_area: int, count: int = 4) -> bytes:
+    """Request status for a range of Areas.
+
+    Observed in CTPlus capture 'Zone Status 3 times in a row':
+      Host->Panel: 60 02 <start_area> <count>
+      Panel->Host: 6A <len> <start_area> <status_words...>
+
+    Where status words are 16-bit little-endian per area.
+    """
+    if not (0 <= start_area <= 255 and 1 <= count <= 255):
+        raise ValueError("Area range out of bounds")
+    return bytes([0x60, 0x02, start_area & 0xFF, count & 0xFF])
+
+
+def parse_area_status_response(body: bytes) -> Optional[Tuple[int, list[int]]]:
+    """Parse an Area status response.
+
+    Returns (start_area, [status_word...]).
+    """
+    if len(body) < 3 or body[0] != 0x6A:
+        return None
+    length = body[1]
+    payload = body[2:2+length]
+    if len(payload) < 1:
+        return None
+    start = payload[0]
+    words = []
+    rest = payload[1:]
+    # each status word is 2 bytes LE
+    for i in range(0, len(rest) - (len(rest) % 2), 2):
+        words.append(int.from_bytes(rest[i:i+2], 'little'))
+    return start, words
