@@ -201,22 +201,19 @@ class TecomHub:
 
         await self._start_transport()
         self._register_services()
+if self.mode == MODE_CTPLUS:
+    # Kick an immediate first poll so entities don't sit 'unknown' until the first poll interval.
+    try:
+        if self.inputs_count > 0:
+            await self.async_request_inputs(1, self.inputs_count)
+        if getattr(self, 'relay_poll_ranges', None):
+            for s, e in self.relay_poll_ranges:
+                await self.async_request_relays(s, e)
+    except Exception:
+        _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
 
-        if self.mode == MODE_CTPLUS:
-            # Kick an immediate first poll so entities don't sit 'unknown' until the poll loop runs.
-            try:
-                if self.inputs_count > 0:
-                    await self.async_request_inputs(1, self.inputs_count)
-                if getattr(self, 'relay_poll_ranges', None):
-                    for s, e in self.relay_poll_ranges:
-                        await self.async_request_relays(s, e)
-                if getattr(self, 'areas_count', 0) and self.areas_count > 0:
-                    await self.async_request_areas(1, self.areas_count)
-            except Exception:
-                _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
-
-            self._poll_task = asyncio.create_task(self._poll_loop())
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+    self._poll_task = asyncio.create_task(self._poll_loop())
+    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def async_stop(self) -> None:
         if self._poll_task:
@@ -335,14 +332,12 @@ class TecomHub:
 async def _poll_loop(self) -> None:
     while True:
         try:
-            # Poll immediately, then sleep.
+            # Poll first, then sleep (so state updates quickly after reload/startup).
             if self.inputs_count > 0:
                 await self.async_request_inputs(1, self.inputs_count)
             if getattr(self, 'relay_poll_ranges', None):
                 for s, e in self.relay_poll_ranges:
                     await self.async_request_relays(s, e)
-            if getattr(self, 'areas_count', 0) and self.areas_count > 0:
-                await self.async_request_areas(1, self.areas_count)
 
             await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:
@@ -369,14 +364,6 @@ async def _poll_loop(self) -> None:
     # Printer mode parsing
     # -------------------------
 
-
-async def async_request_areas(self, start: int, end: int) -> None:
-    """Request Area status in small blocks (observed CTPlus requests are 4 areas at a time)."""
-    cur = start
-    while cur <= end:
-        count = min(4, end - cur + 1)
-        await self._send_command(proto.cmd_request_area_status(cur, count))
-        cur += count
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -469,7 +456,6 @@ async def async_request_areas(self, start: int, end: int) -> None:
             # Attempt to classify this 0x40 payload as a status response or event.
             resp_in = proto.parse_input_status_response(fr.body)
             resp_rel = proto.parse_relay_status_response(fr.body)
-            resp_area = proto.parse_area_status_response(fr.body)
             ev = proto.parse_event(fr.body)
 
             # input status response
@@ -492,17 +478,6 @@ async def async_request_areas(self, start: int, end: int) -> None:
                 self._notify()
                 return
 
-
-            # area status response
-            if resp_area:
-                start, words = resp_area
-                for i, w in enumerate(words):
-                    area = start + i
-                    # Best-effort mapping: 0 => disarmed, non-zero => armed
-                    self.state.areas[area] = "disarmed" if w == 0 else "armed"
-                self.state.last_event = f"Areas {start}-{start+len(words)-1}"
-                self._notify()
-                return
             # events
             if ev:
                 code, obj = ev

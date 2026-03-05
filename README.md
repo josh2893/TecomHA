@@ -42,7 +42,7 @@ It talks to the panel using **CTPlus / “Management software” binary protocol
 
 ### Option A — HACS (recommended)
 1. HACS → **Integrations** → **⋮** → **Custom repositories**
-2. Add your repo URL (e.g. `https://github.com/josh2893/TecomHA/wiki/README`)
+2. Add your repo URL (e.g. `https://github.com/josh2893/TecomHA`)
 3. Category: **Integration**
 4. Install **Tecom ChallengerPlus**
 5. Restart Home Assistant
