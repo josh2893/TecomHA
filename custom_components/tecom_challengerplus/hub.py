@@ -197,56 +197,51 @@ class TecomHub:
             except Exception:  # pragma: no cover
                 _LOGGER.exception("Listener error")
 
-async def async_start(self) -> None:
-    """Start transport and register services."""
-    if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
-        raise TecomNotSupported(
-            "Encryption is configured but not implemented yet; set encryption to None"
-        )
+    async def async_start(self) -> None:
+        """Start transport and register services."""
+        if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
+            raise TecomNotSupported(
+                "Encryption is configured but not implemented yet; set encryption to None"
+            )
 
-    await self._start_transport()
-    self._register_services()
+        await self._start_transport()
+        self._register_services()
 
-    if self.mode == MODE_CTPLUS:
-        # CTPlus session init: observed CTPlus sends a small handshake on first connect.
-        # Without this, some panel ports may not return status/control until a CTPlus client has logged in once.
-        try:
-            await self._send_command(proto.cmd_session_hello())
-            await self._send_command(proto.cmd_session_params())
-        except Exception:
-            _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
-
-        # Door status init can be required before per-door status queries.
-        if self.door_ids and not self._door_status_inited:
+        if self.mode == MODE_CTPLUS:
+            # CTPlus session init (observed in CTPlus login capture). Without this, some ports
+            # can appear to "do nothing" until a CTPlus client connects once.
             try:
-                await self._send_command(proto.cmd_door_status_init())
-                self._door_status_inited = True
+                await self._send_command(proto.cmd_session_hello())
+                await self._send_command(proto.cmd_session_params())
             except Exception:
-                _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
+                _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
 
-        # Initial poll so entities don't sit 'unknown' until the first interval.
-        try:
-            if self.inputs_count > 0:
-                await self.async_request_inputs(1, self.inputs_count)
+            # Door status init can be required before per-door status requests.
+            if self.door_ids and not self._door_status_inited:
+                try:
+                    await self._send_command(proto.cmd_door_status_init())
+                    self._door_status_inited = True
+                except Exception:
+                    _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
 
-            if getattr(self, "relay_poll_ranges", None):
-                for rs, re_ in self.relay_poll_ranges:
-                    await self.async_request_relays(rs, re_)
+            # Initial poll so entities don't sit 'unknown' until the first interval.
+            try:
+                if self.inputs_count > 0:
+                    await self.async_request_inputs(1, self.inputs_count)
 
-            if getattr(self, "areas_count", 0) and self.areas_count > 0:
-                start_area = 1
-                while start_area <= self.areas_count:
-                    count = min(4, self.areas_count - start_area + 1)
-                    await self._send_command(proto.cmd_request_area_status(start_area, count))
-                    start_area += count
+                if getattr(self, "relay_poll_ranges", None):
+                    for rs, re_ in self.relay_poll_ranges:
+                        await self.async_request_relays(rs, re_)
 
-            if hasattr(self, "async_request_doors"):
+                if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                    await self.async_request_areas(1, self.areas_count)
+
                 await self.async_request_doors()
-        except Exception:
-            _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
+            except Exception:
+                _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
 
-        self._poll_task = asyncio.create_task(self._poll_loop())
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._poll_task = asyncio.create_task(self._poll_loop())
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
     async def async_stop(self) -> None:
         if self._poll_task:
             self._poll_task.cancel()
@@ -361,30 +356,27 @@ async def async_start(self) -> None:
                 return
             except Exception:
                 _LOGGER.exception("Heartbeat loop error")
-async def _poll_loop(self) -> None:
-    while True:
-        try:
-            if self.inputs_count > 0:
-                await self.async_request_inputs(1, self.inputs_count)
+    async def _poll_loop(self) -> None:
+        while True:
+            try:
+                # Poll first, then sleep (so state updates quickly after reload/startup).
+                if self.inputs_count > 0:
+                    await self.async_request_inputs(1, self.inputs_count)
 
-            if getattr(self, "relay_poll_ranges", None):
-                for rs, re_ in self.relay_poll_ranges:
-                    await self.async_request_relays(rs, re_)
+                if getattr(self, "relay_poll_ranges", None):
+                    for rs, re_ in self.relay_poll_ranges:
+                        await self.async_request_relays(rs, re_)
 
-            if getattr(self, "areas_count", 0) and self.areas_count > 0:
-                start = 1
-                while start <= self.areas_count:
-                    count = min(4, self.areas_count - start + 1)
-                    await self._send_command(proto.cmd_request_area_status(start, count))
-                    start += count
+                if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                    await self.async_request_areas(1, self.areas_count)
 
-            await self.async_request_doors()
+                await self.async_request_doors()
 
-            await asyncio.sleep(self.poll_interval)
-        except asyncio.CancelledError:
-            return
-        except Exception:
-            _LOGGER.exception("Poll loop error")
+                await asyncio.sleep(self.poll_interval)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                _LOGGER.exception("Poll loop error")
     async def async_request_inputs(self, start: int, end: int) -> None:
         max_chunk = 128
         cur = start
@@ -406,16 +398,6 @@ async def _poll_loop(self) -> None:
     # -------------------------
 
 
-
-async def async_request_doors(self) -> None:
-    """Request door status words for configured doors (best-effort)."""
-    if not self.door_ids:
-        return
-    if not self._door_status_inited:
-        await self._send_command(proto.cmd_door_status_init())
-        self._door_status_inited = True
-    for door in self.door_ids:
-        await self._send_command(proto.cmd_request_door_status_wrapped(door))
     async def async_request_areas(self, start: int, end: int) -> None:
         """Request Area status in blocks (CTPlus observed: up to 4 areas per request)."""
         cur = start
@@ -423,6 +405,17 @@ async def async_request_doors(self) -> None:
             count = min(4, end - cur + 1)
             await self._send_command(proto.cmd_request_area_status(cur, count))
             cur += count
+
+    async def async_request_doors(self) -> None:
+        """Request door status words for configured doors (best-effort)."""
+        if not self.door_ids:
+            return
+        if not self._door_status_inited:
+            await self._send_command(proto.cmd_door_status_init())
+            self._door_status_inited = True
+        for door in self.door_ids:
+            await self._send_command(proto.cmd_request_door_status_wrapped(door))
+
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -544,11 +537,14 @@ async def async_request_doors(self) -> None:
                 for i, w in enumerate(words):
                     area = start_area + i
                     self.state.area_words[area] = w
+
+                    # Observed: Area 1 can report 0x0006 while being Access/Disarmed.
                     if w in (0x0000, 0x0003, 0x0006):
                         self.state.areas[area] = "disarmed"
                     else:
                         if self.state.areas.get(area) not in ("armed", "disarmed", "alarm"):
                             self.state.areas[area] = "unknown"
+
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
                 return

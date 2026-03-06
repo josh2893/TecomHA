@@ -67,16 +67,16 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
             return AlarmControlPanelState.TRIGGERED
         return None
 
-    @property
-    def extra_state_attributes(self):
-        w = getattr(self._hub.state, "area_words", {}).get(self._area)
-        if w is None:
-            return {}
-        return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
-
+@property
+def extra_state_attributes(self):
+    w = getattr(self._hub.state, "area_words", {}).get(self._area)
+    if w is None:
+        return {}
+    return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
         await self._hub.async_arm_area(self._area)
 
     async def async_alarm_disarm(self, code: str | None = None) -> None:
         await self._hub.async_disarm_area(self._area)
+
