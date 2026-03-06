@@ -197,48 +197,56 @@ class TecomHub:
             except Exception:  # pragma: no cover
                 _LOGGER.exception("Listener error")
 
-    async def async_start(self) -> None:
-        """Start transport and register services."""
-        if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
-            raise TecomNotSupported(
-                "Encryption is configured but not implemented yet; set encryption to None"
-            )
+async def async_start(self) -> None:
+    """Start transport and register services."""
+    if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
+        raise TecomNotSupported(
+            "Encryption is configured but not implemented yet; set encryption to None"
+        )
 
-        await self._start_transport()
-        self._register_services()
+    await self._start_transport()
+    self._register_services()
 
-# CTPlus session init: observed CTPlus sends a small handshake on first connect.
-if self.mode == MODE_CTPLUS:
-    try:
-        await self._send_command(proto.cmd_session_hello())
-        await self._send_command(proto.cmd_session_params())
-    except Exception:
-        _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
-
-    if self.door_ids and not self._door_status_inited:
+    if self.mode == MODE_CTPLUS:
+        # CTPlus session init: observed CTPlus sends a small handshake on first connect.
+        # Without this, some panel ports may not return status/control until a CTPlus client has logged in once.
         try:
-            await self._send_command(proto.cmd_door_status_init())
-            self._door_status_inited = True
+            await self._send_command(proto.cmd_session_hello())
+            await self._send_command(proto.cmd_session_params())
         except Exception:
-            _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
+            _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
 
-        if self.mode == MODE_CTPLUS:
-            # Initial poll so entities don't sit 'unknown' until the first interval.
+        # Door status init can be required before per-door status queries.
+        if self.door_ids and not self._door_status_inited:
             try:
-                if self.inputs_count > 0:
-                    await self.async_request_inputs(1, self.inputs_count)
-
-                if getattr(self, "relay_poll_ranges", None):
-                    for rs, re_ in self.relay_poll_ranges:
-                        await self.async_request_relays(rs, re_)
-
-                if getattr(self, "areas_count", 0) and self.areas_count > 0:
-                    await self.async_request_areas(1, self.areas_count)
+                await self._send_command(proto.cmd_door_status_init())
+                self._door_status_inited = True
             except Exception:
-                _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
-            self._poll_task = asyncio.create_task(self._poll_loop())
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
 
+        # Initial poll so entities don't sit 'unknown' until the first interval.
+        try:
+            if self.inputs_count > 0:
+                await self.async_request_inputs(1, self.inputs_count)
+
+            if getattr(self, "relay_poll_ranges", None):
+                for rs, re_ in self.relay_poll_ranges:
+                    await self.async_request_relays(rs, re_)
+
+            if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                start_area = 1
+                while start_area <= self.areas_count:
+                    count = min(4, self.areas_count - start_area + 1)
+                    await self._send_command(proto.cmd_request_area_status(start_area, count))
+                    start_area += count
+
+            if hasattr(self, "async_request_doors"):
+                await self.async_request_doors()
+        except Exception:
+            _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
+
+        self._poll_task = asyncio.create_task(self._poll_loop())
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
     async def async_stop(self) -> None:
         if self._poll_task:
             self._poll_task.cancel()
