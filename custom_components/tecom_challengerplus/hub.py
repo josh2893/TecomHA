@@ -176,6 +176,9 @@ class TecomHub:
         self._door_status_inited: bool = False
         self._type_offset: int = 0
         self._type_offset_known: bool = False
+        self._send_lock = asyncio.Lock()
+        self._last_send_monotonic: float = 0.0
+        self._min_send_interval: float = 0.02  # seconds
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -544,19 +547,19 @@ class TecomHub:
                 self.state.last_event = f"Relays {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
-            # area status response
+                        # area status response
             if resp_area:
                 start_area, words = resp_area
                 for i, w in enumerate(words):
                     area = start_area + i
                     self.state.area_words[area] = w
 
-                    # Observed: Area 1 can report 0x0006 while being Access/Disarmed.
-                    if w in (0x0000, 0x0003, 0x0006):
-                        self.state.areas[area] = "disarmed"
+                    # Heuristic from captures: bit 0 (0x0001) appears to indicate "armed".
+                    # Words like 0x0006 can occur while disarmed (e.g. Accessed + other flags).
+                    if (w & 0x0001) != 0:
+                        self.state.areas[area] = "armed"
                     else:
-                        if self.state.areas.get(area) not in ("armed", "disarmed", "alarm"):
-                            self.state.areas[area] = "unknown"
+                        self.state.areas[area] = "disarmed"
 
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
