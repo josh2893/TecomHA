@@ -27,7 +27,10 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
     """Represents one ChallengerPlus Area."""
 
     _attr_has_entity_name = True
-    _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY | AlarmControlPanelEntityFeature.DISARM
+    _attr_supported_features = (
+        AlarmControlPanelEntityFeature.ARM_AWAY
+        | AlarmControlPanelEntityFeature.ARM_HOME
+    )
     _attr_code_arm_required = False
     _attr_code_disarm_required = False
 
@@ -60,6 +63,8 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
         st = self._hub.state.areas.get(self._area)
         if st == "armed":
             return AlarmControlPanelState.ARMED_AWAY
+        if st == "home":
+            return AlarmControlPanelState.ARMED_HOME
         if st == "disarmed":
             return AlarmControlPanelState.DISARMED
         if st == "alarm":
@@ -74,7 +79,10 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
         return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
-        await self._hub.async_arm_area(self._area)
+        await self._hub.async_arm_area(self._area, mode="away")
+
+    async def async_alarm_arm_home(self, code: str | None = None) -> None:
+        await self._hub.async_arm_area(self._area, mode="home")
 
     async def async_alarm_disarm(self, code: str | None = None) -> None:
         await self._hub.async_disarm_area(self._area)
