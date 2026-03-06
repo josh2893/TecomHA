@@ -174,6 +174,8 @@ class TecomHub:
         self._heartbeat_task: asyncio.Task | None = None
         self._tcp_buf: bytes = b""  # only used for TCP
         self._door_status_inited: bool = False
+        self._type_offset: int = 0
+        self._type_offset_known: bool = False
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -338,19 +340,25 @@ class TecomHub:
     async def _send_frame(self, frame: proto.Frame) -> None:
         await self.async_send_bytes(frame.to_bytes())
 
-    async def _send_command(self, body: bytes) -> None:
+    async def _send_command(self, body: bytes, type_offset: int | None = None) -> None:
         seq = self._next_seq()
-        await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body))
-
-    # -------------------------
-    # Heartbeat / Polling
-    # -------------------------
-
+        # If panel type offset isn't known yet, send both variants (0x00 and 0x40).
+        if type_offset is None and not self._type_offset_known:
+            await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=0x00))
+            await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=0x40))
+            return
+        if type_offset is None:
+            type_offset = self._type_offset
+        await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=type_offset))
     async def _heartbeat_loop(self) -> None:
         """Send CTPlus keepalive frequently so panel does not declare path down."""
         while True:
             try:
-                await self._send_frame(proto.build_heartbeat(self._next_seq()))
+                if not self._type_offset_known:
+                    await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=0x00))
+                    await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=0x40))
+                else:
+                    await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=self._type_offset))
                 await asyncio.sleep(3)
             except asyncio.CancelledError:
                 return
@@ -491,6 +499,11 @@ class TecomHub:
             return
 
         for fr in frames:
+            # Track CTPlus msg_type variant (some panels use +0x40 type bytes).
+            off = getattr(fr, 'type_offset', 0)
+            if off != self._type_offset:
+                self._type_offset = off
+            self._type_offset_known = True
             self._handle_ctplus_frame(fr)
 
         # If there's leftover bytes that didn't parse, surface them for troubleshooting.
@@ -502,7 +515,7 @@ class TecomHub:
             # Always ACK 0x40 frames (panel expects this for comms path health).
             if self._udp_last_peer is not None:
                 asyncio.create_task(
-                    self.async_send_bytes(proto.build_ack(fr.seq, has_ff=getattr(fr, 'has_ff', False)).to_bytes(), addr=self._udp_last_peer)
+                    self.async_send_bytes(proto.build_ack(fr.seq, has_ff=getattr(fr, 'has_ff', False), type_offset=getattr(fr, 'type_offset', self._type_offset)).to_bytes(), addr=self._udp_last_peer)
                 )
 
             # Attempt to classify this 0x40 payload as a status response or event.

@@ -48,10 +48,12 @@ class Frame:
     # Some panel->host frames include an extra 0xFF marker immediately after the header.
     # In that case the CRC is computed excluding the 0xFF marker.
     has_ff: bool = False
+    type_offset: int = 0  # 0 or 0x40 (panel variant)
 
     def to_bytes(self) -> bytes:
-        header = bytes([SYNC, self.msg_type, self.flag1, self.flag2, self.seq])
-        crc_data = bytes([self.msg_type, self.flag1, self.flag2, self.seq]) + self.body
+        msg_type = (self.msg_type + self.type_offset) & 0xFF
+        header = bytes([SYNC, msg_type, self.flag1, self.flag2, self.seq])
+        crc_data = bytes([msg_type, self.flag1, self.flag2, self.seq]) + self.body
         crc = crc16_modbus(crc_data)
         if self.has_ff:
             return header + b"\xFF" + self.body + crc.to_bytes(2, "little")
@@ -62,7 +64,9 @@ def parse_frame(data: bytes) -> Optional[Frame]:
     if not data or data[0] != SYNC or len(data) < 7:
         return None
 
-    msg_type = data[1]
+    raw_type = data[1]
+    type_offset = 0x40 if raw_type >= 0x80 else 0x00
+    msg_type = (raw_type - type_offset) & 0xFF
     flag1 = data[2]
     flag2 = data[3]
     seq = data[4]
@@ -71,13 +75,13 @@ def parse_frame(data: bytes) -> Optional[Frame]:
     # Normal form: CRC over [type..end-of-body]
     body = data[5:-2]
     if recv_crc == crc16_modbus(data[1:-2]):
-        return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body, has_ff=False)
+        return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body, has_ff=False, type_offset=type_offset)
 
     # FF-marker form: a 0xFF byte appears at index 5 but is excluded from CRC.
     if len(body) >= 1 and data[5] == 0xFF:
         body2 = data[6:-2]
         if recv_crc == crc16_modbus(data[1:5] + body2):
-            return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body2, has_ff=True)
+            return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body2, has_ff=True, type_offset=type_offset)
 
     return None
 
@@ -85,11 +89,11 @@ def parse_frame(data: bytes) -> Optional[Frame]:
 # Frame builders
 # -------------------------
 
-def build_ack(seq: int, has_ff: bool = False) -> Frame:
-    return Frame(TYPE_HOST_ACK, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"", has_ff=has_ff)
+def build_ack(seq: int, has_ff: bool = False, type_offset: int = 0) -> Frame:
+    return Frame(TYPE_HOST_ACK, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"", has_ff=has_ff, type_offset=type_offset)
 
-def build_heartbeat(seq: int) -> Frame:
-    return Frame(TYPE_HOST_HEARTBEAT, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"")
+def build_heartbeat(seq: int, type_offset: int = 0) -> Frame:
+    return Frame(TYPE_HOST_HEARTBEAT, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"", type_offset=type_offset)
 
 # -------------------------
 # Command builders (observed)
