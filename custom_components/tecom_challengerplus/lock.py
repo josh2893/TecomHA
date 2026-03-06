@@ -71,18 +71,3 @@ class TecomDoorLock(LockEntity):
         if w is None:
             return {}
         return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
-
-    async def async_lock(self, **kwargs):
-        # No-op: avoid noisy errors if UI calls lock. If a distinct lock action is later mapped,
-        # we can implement it here.
-        return
-
-    async def async_unlock(self, **kwargs):
-        if self._hub.mode != "ctplus":
-            raise TecomNotSupported("Door control requires CTPlus/management mode")
-        await self._hub.async_unlock_door(self._door)
-
-    async def async_open(self, **kwargs):
-        # Treat OPEN the same as UNLOCK (momentary open)
-        await self.async_unlock(**kwargs)
-

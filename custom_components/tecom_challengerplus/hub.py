@@ -208,7 +208,6 @@ class TecomHub:
         self._register_services()
 
 # CTPlus session init: observed CTPlus sends a small handshake on first connect.
-# Without this, some panel ports may not return status/control until a CTPlus client has logged in once.
 if self.mode == MODE_CTPLUS:
     try:
         await self._send_command(proto.cmd_session_hello())
@@ -216,7 +215,7 @@ if self.mode == MODE_CTPLUS:
     except Exception:
         _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
 
-    if self.door_ids and not getattr(self, "_door_status_inited", False):
+    if self.door_ids and not self._door_status_inited:
         try:
             await self._send_command(proto.cmd_door_status_init())
             self._door_status_inited = True
@@ -235,12 +234,11 @@ if self.mode == MODE_CTPLUS:
 
                 if getattr(self, "areas_count", 0) and self.areas_count > 0:
                     await self.async_request_areas(1, self.areas_count)
-
-                await self.async_request_doors()
             except Exception:
                 _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
     async def async_stop(self) -> None:
         if self._poll_task:
             self._poll_task.cancel()
@@ -358,7 +356,6 @@ if self.mode == MODE_CTPLUS:
 async def _poll_loop(self) -> None:
     while True:
         try:
-            # Poll first, then sleep (so state updates quickly after reload/startup).
             if self.inputs_count > 0:
                 await self.async_request_inputs(1, self.inputs_count)
 
@@ -367,7 +364,11 @@ async def _poll_loop(self) -> None:
                     await self.async_request_relays(rs, re_)
 
             if getattr(self, "areas_count", 0) and self.areas_count > 0:
-                await self.async_request_areas(1, self.areas_count)
+                start = 1
+                while start <= self.areas_count:
+                    count = min(4, self.areas_count - start + 1)
+                    await self._send_command(proto.cmd_request_area_status(start, count))
+                    start += count
 
             await self.async_request_doors()
 
@@ -535,16 +536,11 @@ async def async_request_doors(self) -> None:
                 for i, w in enumerate(words):
                     area = start_area + i
                     self.state.area_words[area] = w
-
-                    # IMPORTANT: area status words are not a simple boolean.
-                    # Observed: Area 1 can report 0x0006 while being Access/Disarmed.
                     if w in (0x0000, 0x0003, 0x0006):
                         self.state.areas[area] = "disarmed"
                     else:
-                        # Don't guess "armed" purely from non-zero; prefer event-driven updates.
                         if self.state.areas.get(area) not in ("armed", "disarmed", "alarm"):
                             self.state.areas[area] = "unknown"
-
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
                 return
