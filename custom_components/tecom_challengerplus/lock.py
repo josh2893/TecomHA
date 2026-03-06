@@ -1,9 +1,12 @@
 """Door control entities.
 
-ChallengerPlus "doors" are typically controlled via a momentary OPEN/UNLOCK action.
-The panel does not necessarily support a distinct "lock" action, so we expose:
-  - unlock/open -> sends the door open command
-  - lock -> no-op (prevents noisy errors if the UI calls lock)
+ChallengerPlus "doors" are controlled via a momentary OPEN action.
+
+We use the CTPlus door-status "word" to approximate physical door state in the UI:
+  - word == 0x0000 => Closed/Secure (shown as Locked)
+  - word != 0x0000 => Open/Unsecure (shown as Unlocked)
+
+This makes the Controls list reflect open/closed state.
 """
 
 from __future__ import annotations
@@ -59,12 +62,10 @@ class TecomDoorLock(LockEntity):
 
     @property
     def is_locked(self):
-        # We don't yet have a reliable locked/unlocked bit mapping.
-        # If we haven't received a door status word, return None so HA shows Unknown.
-        st = self._hub.state.doors.get(self._door)
-        if st is None or st == "unknown":
+        w = getattr(self._hub.state, "door_words", {}).get(self._door)
+        if w is None:
             return None
-        return st == "locked"
+        return w == 0
 
     @property
     def extra_state_attributes(self):
@@ -83,5 +84,5 @@ class TecomDoorLock(LockEntity):
         await self._hub.async_unlock_door(self._door)
 
     async def async_open(self, **kwargs):
-        # Treat OPEN the same as UNLOCK (momentary open)
         await self.async_unlock(**kwargs)
+

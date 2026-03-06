@@ -164,6 +164,7 @@ class TecomHub:
         self.encryption_type = cfg.get(CONF_ENCRYPTION_TYPE, ENC_NONE)
 
         self.state = TecomState()
+        self._area_override_until: dict[int, float] = {}
 
         self._listeners: set[UpdateCallback] = set()
 
@@ -174,11 +175,12 @@ class TecomHub:
         self._heartbeat_task: asyncio.Task | None = None
         self._tcp_buf: bytes = b""  # only used for TCP
         self._door_status_inited: bool = False
+        self._door_poll_idx: int = 0
         self._type_offset: int = 0
         self._type_offset_known: bool = False
         self._send_lock = asyncio.Lock()
         self._last_send_monotonic: float = 0.0
-        self._min_send_interval: float = 0.02  # seconds
+        self._min_send_interval: float = 0.05  # seconds (rate limit UDP bursts)
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -417,16 +419,20 @@ class TecomHub:
             await self._send_command(proto.cmd_request_area_status(cur, count))
             cur += count
 
-    async def async_request_doors(self) -> None:
-        """Request door status words for configured doors (best-effort)."""
-        if not self.door_ids:
-            return
-        if not self._door_status_inited:
-            await self._send_command(proto.cmd_door_status_init())
-            self._door_status_inited = True
-        for door in self.door_ids:
-            await self._send_command(proto.cmd_request_door_status_wrapped(door))
+async def async_request_doors(self) -> None:
+    """Request door status words for configured doors (best-effort).
 
+    To reduce comms-path supervision flapping, poll one door per cycle (round-robin).
+    """
+    if not self.door_ids:
+        return
+    if not self._door_status_inited:
+        await self._send_command(proto.cmd_door_status_init())
+        self._door_status_inited = True
+
+    door = self.door_ids[self._door_poll_idx % len(self.door_ids)]
+    self._door_poll_idx = (self._door_poll_idx + 1) % len(self.door_ids)
+    await self._send_command(proto.cmd_request_door_status_wrapped(door))
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -547,23 +553,30 @@ class TecomHub:
                 self.state.last_event = f"Relays {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
-                        # area status response
+            # area status response
             if resp_area:
                 start_area, words = resp_area
+                now = asyncio.get_running_loop().time()
                 for i, w in enumerate(words):
                     area = start_area + i
                     self.state.area_words[area] = w
 
-                    # Heuristic from captures: bit 0 (0x0001) appears to indicate "armed".
-                    # Words like 0x0006 can occur while disarmed (e.g. Accessed + other flags).
-                    if (w & 0x0001) != 0:
-                        self.state.areas[area] = "armed"
-                    else:
+                    until = self._area_override_until.get(area, 0.0)
+                    if now < until:
+                        continue
+
+                    # Heuristic from captures:
+                    # - 0x0000, 0x0003, 0x0006 can occur while DISARMED (incl accessed/flags)
+                    # - Other non-zero values usually indicate ARMED (away/home)
+                    if w in (0x0000, 0x0003, 0x0006):
                         self.state.areas[area] = "disarmed"
+                    else:
+                        self.state.areas[area] = "armed"
 
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
                 return
+
 
 
             # door status response
@@ -628,15 +641,27 @@ class TecomHub:
             raise TecomNotSupported("Door control requires CTPlus mode")
         await self._send_command(proto.cmd_open_door(door))
 
-    async def async_arm_area(self, area: int, mode: str = "away") -> None:
-        if self.mode != MODE_CTPLUS:
-            raise TecomNotSupported("Area control requires CTPlus mode")
-        if mode == "home":
-            await self._send_command(proto.cmd_area_arm_home(area))
-        else:
-            await self._send_command(proto.cmd_area_arm_away(area))
+async def async_arm_area(self, area: int, mode: str = "away") -> None:
+    if self.mode != MODE_CTPLUS:
+        raise TecomNotSupported("Area control requires CTPlus mode")
 
-    async def async_disarm_area(self, area: int) -> None:
-        if self.mode != MODE_CTPLUS:
-            raise TecomNotSupported("Area control requires CTPlus mode")
-        await self._send_command(proto.cmd_area_disarm(area))
+    # Optimistically update state and ignore confusing poll words briefly.
+    self.state.areas[area] = "armed"
+    self._area_override_until[area] = asyncio.get_running_loop().time() + 120.0
+    self._notify()
+
+    if mode == "home":
+        await self._send_command(proto.cmd_area_arm_home(area))
+    else:
+        await self._send_command(proto.cmd_area_arm_away(area))
+
+async def async_disarm_area(self, area: int) -> None:
+    if self.mode != MODE_CTPLUS:
+        raise TecomNotSupported("Area control requires CTPlus mode")
+
+    # Optimistically update state and ignore confusing poll words briefly.
+    self.state.areas[area] = "disarmed"
+    self._area_override_until[area] = asyncio.get_running_loop().time() + 120.0
+    self._notify()
+
+    await self._send_command(proto.cmd_area_disarm(area))
