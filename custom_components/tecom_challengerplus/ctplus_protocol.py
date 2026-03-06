@@ -45,32 +45,48 @@ class Frame:
     flag1: int = FLAG1_DEFAULT
     flag2: int = FLAG2_DEFAULT
     body: bytes = b""
+    # Some panel->host frames include an extra 0xFF marker immediately after the header.
+    # In that case the CRC is computed excluding the 0xFF marker.
+    has_ff: bool = False
 
     def to_bytes(self) -> bytes:
         header = bytes([SYNC, self.msg_type, self.flag1, self.flag2, self.seq])
-        crc = crc16_modbus(bytes([self.msg_type, self.flag1, self.flag2, self.seq]) + self.body)
+        crc_data = bytes([self.msg_type, self.flag1, self.flag2, self.seq]) + self.body
+        crc = crc16_modbus(crc_data)
+        if self.has_ff:
+            return header + b"\xFF" + self.body + crc.to_bytes(2, "little")
         return header + self.body + crc.to_bytes(2, "little")
+
 
 def parse_frame(data: bytes) -> Optional[Frame]:
     if not data or data[0] != SYNC or len(data) < 7:
         return None
+
     msg_type = data[1]
     flag1 = data[2]
     flag2 = data[3]
     seq = data[4]
-    body = data[5:-2]
     recv_crc = int.from_bytes(data[-2:], "little")
-    calc_crc = crc16_modbus(data[1:-2])
-    if recv_crc != calc_crc:
-        return None
-    return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body)
+
+    # Normal form: CRC over [type..end-of-body]
+    body = data[5:-2]
+    if recv_crc == crc16_modbus(data[1:-2]):
+        return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body, has_ff=False)
+
+    # FF-marker form: a 0xFF byte appears at index 5 but is excluded from CRC.
+    if len(body) >= 1 and data[5] == 0xFF:
+        body2 = data[6:-2]
+        if recv_crc == crc16_modbus(data[1:5] + body2):
+            return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body2, has_ff=True)
+
+    return None
 
 # -------------------------
 # Frame builders
 # -------------------------
 
-def build_ack(seq: int) -> Frame:
-    return Frame(TYPE_HOST_ACK, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"")
+def build_ack(seq: int, has_ff: bool = False) -> Frame:
+    return Frame(TYPE_HOST_ACK, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"", has_ff=has_ff)
 
 def build_heartbeat(seq: int) -> Frame:
     return Frame(TYPE_HOST_HEARTBEAT, seq, FLAG1_DEFAULT, FLAG2_DEFAULT, b"")
@@ -202,3 +218,46 @@ def parse_area_status_response(body: bytes) -> Optional[Tuple[int, list[int]]]:
     for i in range(0, len(rest) - (len(rest) % 2), 2):
         words.append(int.from_bytes(rest[i:i+2], 'little'))
     return start, words
+
+
+# -------------------------
+# Session / init helpers (observed)
+# -------------------------
+
+def cmd_session_hello() -> bytes:
+    """Observed CTPlus startup command: 25 01 92."""
+    return b"\x25\x01\x92"
+
+def cmd_session_params() -> bytes:
+    """Observed CTPlus startup command: 01 06 0B 00 00 00 00 00."""
+    return b"\x01\x06\x0B\x00\x00\x00\x00\x00"
+
+
+# -------------------------
+# Door status (observed)
+# -------------------------
+
+def cmd_door_status_init() -> bytes:
+    """Observed one-time init before door status queries: 68 02 03 03."""
+    return b"\x68\x02\x03\x03"
+
+def cmd_request_door_status_wrapped(door: int, group: int = 0x80) -> bytes:
+    """Observed door status request (wrapped): 7E 07 <group> 7C 04 00 68 01 <door>."""
+    if not (0 <= door <= 255):
+        raise ValueError("Door must be 0-255")
+    if not (0 <= group <= 255):
+        raise ValueError("Group must be 0-255")
+    return bytes([0x7E, 0x07, group, 0x7C, 0x04, 0x00, 0x68, 0x01, door])
+
+def parse_door_status_response(body: bytes) -> Optional[Tuple[int, int]]:
+    """Parse door status response: 69 <len> <door> <status_lo> <status_hi>."""
+    if len(body) < 5 or body[0] != 0x69:
+        return None
+    ln = body[1]
+    payload = body[2:2+ln]
+    if len(payload) < 3:
+        return None
+    door = payload[0]
+    status = int.from_bytes(payload[1:3], "little")
+    return door, status
+

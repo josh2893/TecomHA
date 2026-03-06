@@ -59,8 +59,18 @@ class TecomDoorLock(LockEntity):
 
     @property
     def is_locked(self):
-        # Door "locked" state isn't reliably known with current protocol mapping; return None/False-ish.
-        return self._hub.state.doors.get(self._door) == "locked"
+        # If we haven't received door status yet, return None so HA shows Unknown (not Unlocked).
+        st = self._hub.state.doors.get(self._door)
+        if st is None or st == "unknown":
+            return None
+        return st == "locked"
+
+    @property
+    def extra_state_attributes(self):
+        w = getattr(self._hub.state, "door_words", {}).get(self._door)
+        if w is None:
+            return {}
+        return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
 
     async def async_lock(self, **kwargs):
         # No-op: avoid noisy errors if UI calls lock. If a distinct lock action is later mapped,
@@ -75,3 +85,4 @@ class TecomDoorLock(LockEntity):
     async def async_open(self, **kwargs):
         # Treat OPEN the same as UNLOCK (momentary open)
         await self.async_unlock(**kwargs)
+

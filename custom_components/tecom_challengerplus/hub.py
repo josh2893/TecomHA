@@ -108,12 +108,16 @@ class TecomState:
     relays: dict[int, bool] = None
     doors: dict[int, str] = None
     areas: dict[int, str] = None
+    area_words: dict[int, int] = None
+    door_words: dict[int, int] = None
 
     def __post_init__(self):
         self.inputs = self.inputs or {}
         self.relays = self.relays or {}
         self.doors = self.doors or {}
         self.areas = self.areas or {}
+        self.area_words = self.area_words or {}
+        self.door_words = self.door_words or {}
 
 
 class TecomHub:
@@ -169,6 +173,7 @@ class TecomHub:
         self._poll_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._tcp_buf: bytes = b""  # only used for TCP
+        self._door_status_inited: bool = False
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -202,6 +207,22 @@ class TecomHub:
         await self._start_transport()
         self._register_services()
 
+# CTPlus session init: observed CTPlus sends a small handshake on first connect.
+# Without this, some panel ports may not return status/control until a CTPlus client has logged in once.
+if self.mode == MODE_CTPLUS:
+    try:
+        await self._send_command(proto.cmd_session_hello())
+        await self._send_command(proto.cmd_session_params())
+    except Exception:
+        _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
+
+    if self.door_ids and not getattr(self, "_door_status_inited", False):
+        try:
+            await self._send_command(proto.cmd_door_status_init())
+            self._door_status_inited = True
+        except Exception:
+            _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
+
         if self.mode == MODE_CTPLUS:
             # Initial poll so entities don't sit 'unknown' until the first interval.
             try:
@@ -214,11 +235,12 @@ class TecomHub:
 
                 if getattr(self, "areas_count", 0) and self.areas_count > 0:
                     await self.async_request_areas(1, self.areas_count)
+
+                await self.async_request_doors()
             except Exception:
                 _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-
     async def async_stop(self) -> None:
         if self._poll_task:
             self._poll_task.cancel()
@@ -333,25 +355,27 @@ class TecomHub:
                 return
             except Exception:
                 _LOGGER.exception("Heartbeat loop error")
-    async def _poll_loop(self) -> None:
-        while True:
-            try:
-                # Poll first, then sleep (so state updates quickly after reload/startup).
-                if self.inputs_count > 0:
-                    await self.async_request_inputs(1, self.inputs_count)
+async def _poll_loop(self) -> None:
+    while True:
+        try:
+            # Poll first, then sleep (so state updates quickly after reload/startup).
+            if self.inputs_count > 0:
+                await self.async_request_inputs(1, self.inputs_count)
 
-                if getattr(self, "relay_poll_ranges", None):
-                    for rs, re_ in self.relay_poll_ranges:
-                        await self.async_request_relays(rs, re_)
+            if getattr(self, "relay_poll_ranges", None):
+                for rs, re_ in self.relay_poll_ranges:
+                    await self.async_request_relays(rs, re_)
 
-                if getattr(self, "areas_count", 0) and self.areas_count > 0:
-                    await self.async_request_areas(1, self.areas_count)
+            if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                await self.async_request_areas(1, self.areas_count)
 
-                await asyncio.sleep(self.poll_interval)
-            except asyncio.CancelledError:
-                return
-            except Exception:
-                _LOGGER.exception("Poll loop error")
+            await self.async_request_doors()
+
+            await asyncio.sleep(self.poll_interval)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            _LOGGER.exception("Poll loop error")
     async def async_request_inputs(self, start: int, end: int) -> None:
         max_chunk = 128
         cur = start
@@ -373,6 +397,16 @@ class TecomHub:
     # -------------------------
 
 
+
+async def async_request_doors(self) -> None:
+    """Request door status words for configured doors (best-effort)."""
+    if not self.door_ids:
+        return
+    if not self._door_status_inited:
+        await self._send_command(proto.cmd_door_status_init())
+        self._door_status_inited = True
+    for door in self.door_ids:
+        await self._send_command(proto.cmd_request_door_status_wrapped(door))
     async def async_request_areas(self, start: int, end: int) -> None:
         """Request Area status in blocks (CTPlus observed: up to 4 areas per request)."""
         cur = start
@@ -466,13 +500,14 @@ class TecomHub:
             # Always ACK 0x40 frames (panel expects this for comms path health).
             if self._udp_last_peer is not None:
                 asyncio.create_task(
-                    self.async_send_bytes(proto.build_ack(fr.seq).to_bytes(), addr=self._udp_last_peer)
+                    self.async_send_bytes(proto.build_ack(fr.seq, has_ff=getattr(fr, 'has_ff', False)).to_bytes(), addr=self._udp_last_peer)
                 )
 
             # Attempt to classify this 0x40 payload as a status response or event.
             resp_in = proto.parse_input_status_response(fr.body)
             resp_rel = proto.parse_relay_status_response(fr.body)
             resp_area = proto.parse_area_status_response(fr.body)
+            resp_door = proto.parse_door_status_response(fr.body)
             ev = proto.parse_event(fr.body)
 
             # input status response
@@ -494,17 +529,36 @@ class TecomHub:
                 self.state.last_event = f"Relays {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
-
             # area status response
             if resp_area:
                 start_area, words = resp_area
                 for i, w in enumerate(words):
                     area = start_area + i
-                    # Best-effort mapping: 0 => disarmed, non-zero => armed
-                    self.state.areas[area] = "disarmed" if w == 0 else "armed"
+                    self.state.area_words[area] = w
+
+                    # IMPORTANT: area status words are not a simple boolean.
+                    # Observed: Area 1 can report 0x0006 while being Access/Disarmed.
+                    if w in (0x0000, 0x0003, 0x0006):
+                        self.state.areas[area] = "disarmed"
+                    else:
+                        # Don't guess "armed" purely from non-zero; prefer event-driven updates.
+                        if self.state.areas.get(area) not in ("armed", "disarmed", "alarm"):
+                            self.state.areas[area] = "unknown"
+
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
                 return
+
+
+            # door status response
+            if resp_door:
+                door, status = resp_door
+                self.state.door_words[door] = status
+                self.state.doors[door] = "unknown"
+                self.state.last_event = f"Door {door} status 0x{status:04X}"
+                self._notify()
+                return
+
             # events
             if ev:
                 code, obj = ev
