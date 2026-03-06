@@ -15,7 +15,6 @@ from .const import DOMAIN
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = hass.data[DOMAIN][entry.entry_id]
 
-    # Backwards compatible: use areas_count (1..N). If zero, create none.
     count = int(getattr(hub, "areas_count", 0) or 0)
     if count <= 0:
         return
@@ -28,7 +27,7 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
     """Represents one ChallengerPlus Area."""
 
     _attr_has_entity_name = True
-    _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY
+    _attr_supported_features = AlarmControlPanelEntityFeature.ARM_AWAY | AlarmControlPanelEntityFeature.DISARM
     _attr_code_arm_required = False
     _attr_code_disarm_required = False
 
@@ -67,12 +66,12 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
             return AlarmControlPanelState.TRIGGERED
         return None
 
-@property
-def extra_state_attributes(self):
-    w = getattr(self._hub.state, "area_words", {}).get(self._area)
-    if w is None:
-        return {}
-    return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
+    @property
+    def extra_state_attributes(self):
+        w = getattr(self._hub.state, "area_words", {}).get(self._area)
+        if w is None:
+            return {}
+        return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
         await self._hub.async_arm_area(self._area)

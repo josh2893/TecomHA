@@ -1,8 +1,8 @@
-"""Door control entities.
+"""Door control entities for Tecom ChallengerPlus.
 
 ChallengerPlus "doors" are typically controlled via a momentary OPEN/UNLOCK action.
 The panel does not necessarily support a distinct "lock" action, so we expose:
-  - unlock/open -> sends the door open command
+  - open/unlock -> sends the door open command (momentary unlock)
   - lock -> no-op (prevents noisy errors if the UI calls lock)
 """
 
@@ -29,6 +29,8 @@ async def async_setup_entry(
 
 
 class TecomDoorLock(LockEntity):
+    """Represents one ChallengerPlus Door."""
+
     _attr_has_entity_name = True
     _attr_icon = "mdi:door"
     _attr_supported_features = LockEntityFeature.OPEN
@@ -59,7 +61,11 @@ class TecomDoorLock(LockEntity):
 
     @property
     def is_locked(self):
-        # If we haven't received door status yet, return None so HA shows Unknown (not Unlocked).
+        """Return lock state.
+
+        We don't yet have a reliable locked/unlocked bit mapping. If we haven't received a
+        door status word, return None so Home Assistant shows Unknown instead of Unlocked.
+        """
         st = self._hub.state.doors.get(self._door)
         if st is None or st == "unknown":
             return None
@@ -78,11 +84,10 @@ class TecomDoorLock(LockEntity):
         return
 
     async def async_unlock(self, **kwargs):
-        if self._hub.mode != "ctplus":
+        if getattr(self._hub, "mode", "") != "ctplus":
             raise TecomNotSupported("Door control requires CTPlus/management mode")
         await self._hub.async_unlock_door(self._door)
 
     async def async_open(self, **kwargs):
         # Treat OPEN the same as UNLOCK (momentary open)
         await self.async_unlock(**kwargs)
-
