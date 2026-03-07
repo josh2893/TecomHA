@@ -1,12 +1,8 @@
 """Door control entities.
 
-ChallengerPlus "doors" are controlled via a momentary OPEN action.
-
-We use the CTPlus door-status "word" to approximate physical door state in the UI:
-  - word == 0x0000 => Closed/Secure (shown as Locked)
-  - word != 0x0000 => Open/Unsecure (shown as Unlocked)
-
-This makes the Controls list reflect open/closed state.
+We use the CTPlus door-status *word* as a proxy for physical door state in the UI:
+  - 0x0000 -> Closed/Secure (shown as Locked)
+  - non-zero -> Open/Unsecure (shown as Unlocked)
 """
 
 from __future__ import annotations
@@ -75,7 +71,6 @@ class TecomDoorLock(LockEntity):
         return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
 
     async def async_lock(self, **kwargs):
-        # No-op: avoid noisy errors if UI calls lock.
         return
 
     async def async_unlock(self, **kwargs):
@@ -85,4 +80,3 @@ class TecomDoorLock(LockEntity):
 
     async def async_open(self, **kwargs):
         await self.async_unlock(**kwargs)
-
