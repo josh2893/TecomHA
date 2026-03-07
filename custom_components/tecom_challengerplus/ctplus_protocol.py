@@ -245,12 +245,24 @@ def cmd_door_status_init() -> bytes:
     """Observed one-time init before door status queries: 68 02 03 03."""
     return b"\x68\x02\x03\x03"
 
-def cmd_request_door_status_wrapped(door: int, group: int = 0x80) -> bytes:
-    """Observed door status request (wrapped): 7E 07 <group> 7C 04 00 68 01 <door>."""
+def cmd_request_door_status_wrapped(door: int, group: int | None = None) -> bytes:
+    """Door status request (wrapped): 7E 07 <group> 7C 04 00 68 01 <door>.
+
+    CTPlus uses a group byte that increments per DGP (4 doors per DGP), starting at door 17:
+      17-20 -> 0x80, 21-24 -> 0x81, 25-28 -> 0x82, ...
+    """
     if not (0 <= door <= 255):
         raise ValueError("Door must be 0-255")
+
+    if group is None:
+        if door >= 17:
+            group = 0x80 + ((door - 17) // 4)
+        else:
+            group = 0x80
+
     if not (0 <= group <= 255):
         raise ValueError("Group must be 0-255")
+
     return bytes([0x7E, 0x07, group, 0x7C, 0x04, 0x00, 0x68, 0x01, door])
 
 def parse_door_status_response(body: bytes) -> Optional[Tuple[int, int]]:

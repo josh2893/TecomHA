@@ -74,3 +74,5 @@ DEFAULT_DOOR_STATUS_MODE = "round_robin"
 DEFAULT_DOOR_STATUS_PER_CYCLE = 1
 DEFAULT_DGP_DOOR_RANGES = ""
 DEFAULT_RAS_DOOR_RANGES = ""
+CONF_DGP_DOOR_RANGES = "dgp_door_ranges"  # e.g. "17-20,21-24,33-36"
+CONF_RAS_DOOR_RANGES = "ras_door_ranges"  # e.g. "3,6,8" or "1-16"
