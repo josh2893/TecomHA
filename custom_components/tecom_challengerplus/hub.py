@@ -51,6 +51,8 @@ from .const import (
     DEFAULT_MIN_SEND_INTERVAL_MS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
+    DEFAULT_DGP_DOOR_RANGES,
+    DEFAULT_RAS_DOOR_RANGES,
 )
 from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
@@ -208,12 +210,36 @@ class TecomHub:
         self._heartbeat_task: asyncio.Task | None = None
         self._tcp_buf: bytes = b""  # only used for TCP
         self._door_status_inited: bool = False
-        self._door_poll_idx: int = 0
+        self._dgp_door_poll_idx: int = 0
         self._type_offset: int = 0
         self._type_offset_known: bool = False
         self._send_lock = asyncio.Lock()
         self._last_send_monotonic: float = 0.0
         self._min_send_interval: float = max(0.0, float(self.min_send_interval_ms) / 1000.0)  # seconds
+        # Door selection: DGP doors (17+) can be specified as ranges, e.g. 17-20,21-24,33-36.
+        self.dgp_door_ranges_spec = str(cfg.get(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES) or '').strip()
+        if self.dgp_door_ranges_spec:
+            self.dgp_door_ranges = parse_ranges(self.dgp_door_ranges_spec)
+            self.dgp_door_ids = [d for d in expand_ranges(self.dgp_door_ranges) if d >= 17]
+        else:
+            self.dgp_door_ranges = [(self.door_first_number, self.door_last_number)] if self.door_last_number >= self.door_first_number and self.door_last_number > 0 else []
+            self.dgp_door_ids = [d for d in range(self.door_first_number, self.door_last_number + 1) if d >= 17] if self.dgp_door_ranges else []
+
+        # RAS / keypad / single door controller selection (doors 1-16). e.g. 3,6,8 or 1-16
+        self.ras_door_ranges_spec = str(cfg.get(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES) or '').strip()
+        if self.ras_door_ranges_spec:
+            self.ras_door_ranges = parse_ranges(self.ras_door_ranges_spec)
+            self.ras_door_ids = [d for d in expand_ranges(self.ras_door_ranges) if 1 <= d <= 16]
+        else:
+            self.ras_door_ranges = []
+            self.ras_door_ids = []
+
+        # Combined 'doors' list used by platforms (DGP doors + RAS doors).
+        self.door_ids = self.dgp_door_ids + self.ras_door_ids
+
+        # Debug ring buffer (last N frames).
+        self._debug_frames = deque(maxlen=500)
+
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -421,6 +447,10 @@ class TecomHub:
 
                 if getattr(self, 'areas_count', 0) and self.areas_count > 0:
                     await self.async_request_areas(1, self.areas_count)
+                if getattr(self, 'ras_door_ids', None):
+                    for ras in self.ras_door_ids:
+                        await self._send_command(proto.cmd_request_ras_status(ras))
+
 
                 await self.async_request_doors()
 
@@ -459,13 +489,13 @@ class TecomHub:
             cur += count
 
     async def async_request_doors(self) -> None:
-        """Request door status words for configured doors (best-effort).
+        """Request status for DGP doors (17+) only.
 
-        Options:
-          - door_status_mode: "round_robin" (default) or "all_each_cycle"
-          - door_status_per_cycle: number of doors to request per poll when using round_robin
+        Use Options:
+          - door_status_mode: round_robin / all_each_cycle
+          - door_status_per_cycle
         """
-        if not self.door_ids:
+        if not getattr(self, "dgp_door_ids", None):
             return
         if not self._door_status_inited:
             await self._send_command(proto.cmd_door_status_init())
@@ -474,15 +504,15 @@ class TecomHub:
         mode = (self.door_status_mode or DEFAULT_DOOR_STATUS_MODE).lower()
         per = max(1, int(self.door_status_per_cycle or 1))
 
-        if mode == 'all_each_cycle':
-            for door in self.door_ids:
+        if mode == "all_each_cycle":
+            for door in self.dgp_door_ids:
                 await self._send_command(proto.cmd_request_door_status_wrapped(door))
             return
 
         # round_robin
-        for _ in range(min(per, len(self.door_ids))):
-            door = self.door_ids[self._door_poll_idx % len(self.door_ids)]
-            self._door_poll_idx = (self._door_poll_idx + 1) % len(self.door_ids)
+        for _ in range(min(per, len(self.dgp_door_ids))):
+            door = self.dgp_door_ids[self._dgp_door_poll_idx % len(self.dgp_door_ids)]
+            self._dgp_door_poll_idx = (self._dgp_door_poll_idx + 1) % len(self.dgp_door_ids)
             await self._send_command(proto.cmd_request_door_status_wrapped(door))
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
@@ -548,6 +578,7 @@ class TecomHub:
             self._handle_ctplus_frame(fr)
 
     def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
+        self._debug_frames.append({'ts': time.time(), 'dir': 'rx', 'peer': str(addr), 'hex': data.hex()})
         if addr is not None:
             self._udp_last_peer = addr
         # UDP datagrams can contain multiple CTPlus frames.
@@ -636,6 +667,15 @@ class TecomHub:
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
+            # RAS status response (doors 1-16 / keypads / single door controllers)
+            resp_ras = proto.parse_ras_status_response(fr.body)
+            if resp_ras:
+                ras, status = resp_ras
+                self.state.ras_status[ras] = status
+                self.state.last_event = f"RAS {ras} status"
+                self._notify()
+                return
+
 
             # events
             if ev:
@@ -713,3 +753,26 @@ class TecomHub:
         self._notify()
 
         await self._send_command(proto.cmd_area_disarm(area))
+
+
+async def async_dump_debug(self) -> str:
+    """Dump recent RX/TX frames to /config for support/debugging."""
+    try:
+        path = self.hass.config.path(f"tecom_challengerplus_debug_{int(time.time())}.json")
+        data = {
+            "ts": time.time(),
+            "host": self.host,
+            "mode": self.mode,
+            "peer": str(getattr(self, "_udp_last_peer", None)),
+            "recent_frames": list(self._debug_frames),
+        }
+        # Write via executor to avoid blocking event loop
+        def _write():
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        await self.hass.async_add_executor_job(_write)
+        _LOGGER.warning("Tecom ChallengerPlus debug dump written: %s", path)
+        return path
+    except Exception:
+        _LOGGER.exception("Failed to write debug dump")
+        return ""

@@ -94,3 +94,50 @@ class TecomDoorContactBinarySensor(BinarySensorEntity):
         if w is None:
             return None
         return w != 0
+
+
+class TecomRasContact(BinarySensorEntity):
+    """RAS / keypad / simple door controller status surfaced as an opening sensor (best-effort)."""
+    _attr_has_entity_name = True
+    _attr_device_class = BinarySensorDeviceClass.OPENING
+
+    def __init__(self, hub, ras: int) -> None:
+        self._hub = hub
+        self._ras = ras
+        self._attr_name = f"RAS Door {ras} Contact"
+        self._attr_unique_id = f"{hub.entry.entry_id}_ras_contact_{ras}"
+        self._unsub = None
+
+    async def async_added_to_hass(self) -> None:
+        self._unsub = self._hub.add_listener(self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._hub.entry.unique_id or self._hub.entry.entry_id)},
+            name=self._hub.entry.title,
+            manufacturer="Aritech / Tecom",
+            model="ChallengerPlus",
+        )
+
+    @property
+    def is_on(self):
+        st = getattr(self._hub.state, "ras_status", {}).get(self._ras)
+        if st is None:
+            return None
+        # Best-effort heuristic: 0x11 appears to be 'idle/normal' in captures.
+        # Treat anything else as 'open/active' so changes are visible.
+        return st != 0x11
+
+    @property
+    def extra_state_attributes(self):
+        st = getattr(self._hub.state, "ras_status", {}).get(self._ras)
+        if st is None:
+            return {}
+        return {"raw_status": st, "raw_status_hex": f"0x{st:02X}"}
+

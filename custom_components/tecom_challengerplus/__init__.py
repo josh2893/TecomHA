@@ -22,6 +22,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .hub import TecomHub  # local import to keep config flow loadable
     hub = TecomHub(hass, entry)
     await hub.async_start()
+    # Register a debug dump service for troubleshooting.
+    async def _dump_debug(call):
+        await hub.async_dump_debug()
+    hass.services.async_register(DOMAIN, "dump_debug", _dump_debug)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = hub
 

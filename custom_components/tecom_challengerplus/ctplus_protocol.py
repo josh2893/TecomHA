@@ -265,3 +265,15 @@ def parse_door_status_response(body: bytes) -> Optional[Tuple[int, int]]:
     status = int.from_bytes(payload[1:3], "little")
     return door, status
 
+def cmd_request_ras_status(ras: int) -> bytes:
+    """Request status for a RAS / keypad / single-door controller (doors 1-16)."""
+    r = ras & 0xFF
+    return bytes([0x62, 0x02, r, r])
+
+def parse_ras_status_response(body: bytes) -> tuple[int, int] | None:
+    """Parse a RAS status response. Expected: 63 02 <ras> <status>."""
+    if len(body) >= 4 and body[0] == 0x63 and body[1] == 0x02:
+        return body[2], body[3]
+    return None
+
+

@@ -11,7 +11,9 @@
           "heartbeat_interval": "Heartbeat interval (seconds)",
           "min_send_interval_ms": "Min delay between UDP frames (ms)",
           "door_status_mode": "Door status polling mode",
-          "door_status_per_cycle": "Doors polled per cycle (round-robin)"
+          "door_status_per_cycle": "Doors polled per cycle (round-robin)",
+          "dgp_door_ranges": "DGP door ranges (optional) e.g. 17-20,21-24,33-36",
+          "ras_door_ranges": "RAS door numbers (optional) e.g. 3,6,8 or 1-16"
         }
       },
       "init": {
