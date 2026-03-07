@@ -54,3 +54,21 @@ CONF_DOOR_LAST = "door_last_number"
 
 # Relay numbering options
 CONF_RELAY_RANGES = "relay_ranges"  # e.g. "1-16,21-24,49-56"
+
+# Advanced / diagnostics options (Options Flow)
+CONF_INPUT_RANGES = "input_ranges"  # e.g. "1-16,21-24,49-56" (overrides inputs_count when set)
+
+CONF_SEND_ACKS = "send_acks"
+CONF_SEND_HEARTBEATS = "send_heartbeats"
+CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"  # seconds
+
+CONF_MIN_SEND_INTERVAL_MS = "min_send_interval_ms"  # milliseconds between UDP frames (rate limit)
+CONF_DOOR_STATUS_MODE = "door_status_mode"  # "round_robin" or "all_each_cycle"
+CONF_DOOR_STATUS_PER_CYCLE = "door_status_per_cycle"  # how many doors to poll per cycle when round-robin
+
+DEFAULT_SEND_ACKS = True
+DEFAULT_SEND_HEARTBEATS = True
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 3
+DEFAULT_MIN_SEND_INTERVAL_MS = 50
+DEFAULT_DOOR_STATUS_MODE = "round_robin"
+DEFAULT_DOOR_STATUS_PER_CYCLE = 1

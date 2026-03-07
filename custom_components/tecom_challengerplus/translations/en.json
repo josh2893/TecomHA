@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tecom ChallengerPlus",
+        "description": "Set up a ChallengerPlus comms path for Home Assistant.\n\nCTPlus mode uses the binary Management Software protocol (experimental).",
+        "data": {
+          "mode": "Integration mode",
+          "host": "Panel IP address",
+          "transport": "Transport",
+          "tcp_role": "TCP role",
+          "send_port": "Panel port (send to panel)",
+          "listen_port": "Local listen port",
+          "bind_host": "Local bind address",
+          "account_code": "Account / Computer number",
+          "computer_password": "Computer password",
+          "auth_username": "Username (if required)",
+          "auth_password": "Password (if required)",
+          "encryption_type": "Encryption type",
+          "encryption_key": "Encryption key",
+          "poll_interval": "Poll interval (seconds)",
+          "inputs_count": "Inputs count (contiguous 1..N)",
+          "input_ranges": "Input ranges (optional) e.g. 1-16,21-24,49-56",
+          "areas_count": "Areas count (1..N)",
+          "door_first_number": "First door number",
+          "door_last_number": "Last door number (0 disables doors)",
+          "relays_count": "Relays count (contiguous 1..N)",
+          "relay_ranges": "Relay ranges (optional)",
+          "send_acks": "Send ACKs to panel frames (recommended)",
+          "send_heartbeats": "Send heartbeats/keepalive (recommended)",
+          "heartbeat_interval": "Heartbeat interval (seconds)",
+          "min_send_interval_ms": "Min delay between UDP frames (ms)",
+          "door_status_mode": "Door status polling mode",
+          "door_status_per_cycle": "Doors polled per cycle (round-robin)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tecom ChallengerPlus options",
+        "description": "Tuning options for diagnosing comms-path flapping and balancing update speed vs traffic."
+      }
+    }
+  }
+}

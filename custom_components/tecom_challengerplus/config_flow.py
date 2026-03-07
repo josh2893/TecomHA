@@ -42,6 +42,19 @@ from .const import (
     CONF_DOOR_FIRST,
     CONF_DOOR_LAST,
     CONF_RELAY_RANGES,
+    CONF_INPUT_RANGES,
+    CONF_SEND_ACKS,
+    CONF_SEND_HEARTBEATS,
+    CONF_HEARTBEAT_INTERVAL,
+    CONF_MIN_SEND_INTERVAL_MS,
+    CONF_DOOR_STATUS_MODE,
+    CONF_DOOR_STATUS_PER_CYCLE,
+    DEFAULT_SEND_ACKS,
+    DEFAULT_SEND_HEARTBEATS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    DEFAULT_MIN_SEND_INTERVAL_MS,
+    DEFAULT_DOOR_STATUS_MODE,
+    DEFAULT_DOOR_STATUS_PER_CYCLE,
     CONF_AREAS_COUNT,
 )
 
@@ -87,6 +100,16 @@ ENC_SELECTOR = selector.SelectSelector(
     )
 )
 
+
+DOOR_STATUS_MODE_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[
+            {"label": "Round-robin (poll N doors per cycle)", "value": "round_robin"},
+            {"label": "All doors each cycle (fastest, most traffic)", "value": "all_each_cycle"},
+        ],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+    )
+)
 def _normalized_defaults(defaults: dict) -> dict:
     """Normalize defaults for backward compatibility."""
     d = dict(defaults or {})
@@ -103,6 +126,13 @@ def _normalized_defaults(defaults: dict) -> dict:
         else:
             d.setdefault(CONF_DOOR_LAST, 0)
     d.setdefault(CONF_RELAY_RANGES, "")
+    d.setdefault(CONF_INPUT_RANGES, "")
+    d.setdefault(CONF_SEND_ACKS, DEFAULT_SEND_ACKS)
+    d.setdefault(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS)
+    d.setdefault(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS)
+    d.setdefault(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS)
+    d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
+    d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
     return d
 
 
@@ -149,6 +179,9 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Required(CONF_INPUTS_COUNT, default=int(defaults.get(CONF_INPUTS_COUNT, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=4096, mode=selector.NumberSelectorMode.BOX)
             ),
+            vol.Optional(CONF_INPUT_RANGES, default=str(defaults.get(CONF_INPUT_RANGES, ""))): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
             vol.Required(CONF_AREAS_COUNT, default=int(defaults.get(CONF_AREAS_COUNT, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=1024, mode=selector.NumberSelectorMode.BOX)
             ),
@@ -167,6 +200,20 @@ def _schema(defaults: dict) -> vol.Schema:
             ),
             vol.Optional(CONF_RELAY_RANGES, default=str(defaults.get(CONF_RELAY_RANGES, ""))): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+
+            # Diagnostics / tuning
+            vol.Optional(CONF_SEND_ACKS, default=bool(defaults.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))): selector.BooleanSelector(),
+            vol.Optional(CONF_SEND_HEARTBEATS, default=bool(defaults.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))): selector.BooleanSelector(),
+            vol.Optional(CONF_HEARTBEAT_INTERVAL, default=int(defaults.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=60, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_MIN_SEND_INTERVAL_MS, default=int(defaults.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=500, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_DOOR_STATUS_MODE, default=str(defaults.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
+            vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
             ),
         }
     )

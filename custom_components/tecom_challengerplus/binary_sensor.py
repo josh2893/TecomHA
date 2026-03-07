@@ -14,7 +14,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     hub = hass.data[DOMAIN][entry.entry_id]
 
     entities = []
-    for i in range(1, hub.inputs_count + 1):
+    for i in getattr(hub, 'input_ids', list(range(1, hub.inputs_count + 1))):
         entities.append(TecomInputBinarySensor(hub, i))
 
 

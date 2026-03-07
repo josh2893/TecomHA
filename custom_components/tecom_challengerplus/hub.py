@@ -38,6 +38,19 @@ from .const import (
     CONF_RELAY_RANGES,
     CONF_AREAS_COUNT,
     CONF_ENCRYPTION_TYPE,
+    CONF_INPUT_RANGES,
+    CONF_SEND_ACKS,
+    CONF_SEND_HEARTBEATS,
+    CONF_HEARTBEAT_INTERVAL,
+    CONF_MIN_SEND_INTERVAL_MS,
+    CONF_DOOR_STATUS_MODE,
+    CONF_DOOR_STATUS_PER_CYCLE,
+    DEFAULT_SEND_ACKS,
+    DEFAULT_SEND_HEARTBEATS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    DEFAULT_MIN_SEND_INTERVAL_MS,
+    DEFAULT_DOOR_STATUS_MODE,
+    DEFAULT_DOOR_STATUS_PER_CYCLE,
 )
 from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
@@ -136,7 +149,27 @@ class TecomHub:
         self.tcp_role: str = cfg.get(CONF_TCP_ROLE, TCP_ROLE_CLIENT)
         self.poll_interval: int = int(cfg.get(CONF_POLL_INTERVAL, 10))
 
+        # Diagnostics / tuning options (Options Flow).
+        self.send_acks: bool = bool(cfg.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))
+        self.send_heartbeats: bool = bool(cfg.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))
+        self.heartbeat_interval: int = int(cfg.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+        self.min_send_interval_ms: int = int(cfg.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))
+        self.door_status_mode: str = str(cfg.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE) or DEFAULT_DOOR_STATUS_MODE)
+        self.door_status_per_cycle: int = int(cfg.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))
+
+
         self.inputs_count = int(cfg.get(CONF_INPUTS_COUNT, 0))
+        # Inputs can be non-contiguous; input_ranges overrides inputs_count when set.
+        self.input_ranges_spec = str(cfg.get(CONF_INPUT_RANGES, '') or '').strip()
+        if self.input_ranges_spec:
+            self.input_poll_ranges = parse_ranges(self.input_ranges_spec)
+            self.input_ids = expand_ranges(self.input_poll_ranges)
+            self.inputs_max = max(self.input_ids, default=0)
+        else:
+            self.input_poll_ranges = [(1, self.inputs_count)] if self.inputs_count > 0 else []
+            self.input_ids = list(range(1, self.inputs_count + 1)) if self.inputs_count > 0 else []
+            self.inputs_max = self.inputs_count
+
         self.relays_count = int(cfg.get(CONF_RELAYS_COUNT, 0))
         # Relay numbering can be non-contiguous; relay_ranges overrides relays_count when set.
         self.relay_ranges_spec = str(cfg.get(CONF_RELAY_RANGES, '') or '').strip()
@@ -180,7 +213,7 @@ class TecomHub:
         self._type_offset_known: bool = False
         self._send_lock = asyncio.Lock()
         self._last_send_monotonic: float = 0.0
-        self._min_send_interval: float = 0.05  # seconds (rate limit UDP bursts)
+        self._min_send_interval: float = max(0.0, float(self.min_send_interval_ms) / 1000.0)
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -359,12 +392,17 @@ class TecomHub:
         """Send CTPlus keepalive frequently so panel does not declare path down."""
         while True:
             try:
+                if not self.send_heartbeats:
+                    await asyncio.sleep(1)
+                    continue
+
                 if not self._type_offset_known:
                     await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=0x00))
                     await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=0x40))
                 else:
                     await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=self._type_offset))
-                await asyncio.sleep(3)
+
+                await asyncio.sleep(max(1, int(self.heartbeat_interval or DEFAULT_HEARTBEAT_INTERVAL_SECONDS)))
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -372,9 +410,10 @@ class TecomHub:
     async def _poll_loop(self) -> None:
         while True:
             try:
-                # Poll first, then sleep (so state updates quickly after reload/startup).
-                if self.inputs_count > 0:
-                    await self.async_request_inputs(1, self.inputs_count)
+                # Poll first, then sleep.
+                if getattr(self, "input_poll_ranges", None):
+                    for rs, re_ in self.input_poll_ranges:
+                        await self.async_request_inputs(rs, re_)
 
                 if getattr(self, "relay_poll_ranges", None):
                     for rs, re_ in self.relay_poll_ranges:
@@ -422,7 +461,9 @@ class TecomHub:
     async def async_request_doors(self) -> None:
         """Request door status words for configured doors (best-effort).
 
-        Poll one door per cycle (round-robin) to avoid UDP bursts that can trigger comms-path flapping.
+        Options:
+          - door_status_mode: "round_robin" (default) or "all_each_cycle"
+          - door_status_per_cycle: number of doors to request per poll when using round_robin
         """
         if not self.door_ids:
             return
@@ -430,9 +471,19 @@ class TecomHub:
             await self._send_command(proto.cmd_door_status_init())
             self._door_status_inited = True
 
-        door = self.door_ids[self._door_poll_idx % len(self.door_ids)]
-        self._door_poll_idx = (self._door_poll_idx + 1) % len(self.door_ids)
-        await self._send_command(proto.cmd_request_door_status_wrapped(door))
+        mode = (self.door_status_mode or DEFAULT_DOOR_STATUS_MODE).lower()
+        per = max(1, int(self.door_status_per_cycle or 1))
+
+        if mode == "all_each_cycle":
+            for door in self.door_ids:
+                await self._send_command(proto.cmd_request_door_status_wrapped(door))
+            return
+
+        # round_robin
+        for _ in range(min(per, len(self.door_ids))):
+            door = self.door_ids[self._door_poll_idx % len(self.door_ids)]
+            self._door_poll_idx = (self._door_poll_idx + 1) % len(self.door_ids)
+            await self._send_command(proto.cmd_request_door_status_wrapped(door))
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -522,7 +573,7 @@ class TecomHub:
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
             # Always ACK 0x40 frames (panel expects this for comms path health).
-            if self._udp_last_peer is not None:
+            if self.send_acks and self._udp_last_peer is not None:
                 asyncio.create_task(
                     self.async_send_bytes(proto.build_ack(fr.seq, has_ff=getattr(fr, 'has_ff', False), type_offset=getattr(fr, 'type_offset', self._type_offset)).to_bytes(), addr=self._udp_last_peer)
                 )
