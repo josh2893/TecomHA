@@ -6,6 +6,8 @@ import asyncio
 import contextlib
 import logging
 import re
+import time
+import json
 from collections import deque
 from dataclasses import dataclass
 from typing import Callable
@@ -128,6 +130,7 @@ class TecomState:
     areas: dict[int, str] = None
     area_words: dict[int, int] = None
     door_words: dict[int, int] = None
+    ras_status: dict[int, int] = None
 
     def __post_init__(self):
         self.inputs = self.inputs or {}
@@ -136,6 +139,7 @@ class TecomState:
         self.areas = self.areas or {}
         self.area_words = self.area_words or {}
         self.door_words = self.door_words or {}
+        self.ras_status = self.ras_status or {}
 
 
 class TecomHub:
