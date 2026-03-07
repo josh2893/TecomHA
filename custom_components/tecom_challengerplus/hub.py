@@ -224,8 +224,8 @@ class TecomHub:
             self.dgp_door_ranges = parse_ranges(self.dgp_door_ranges_spec)
             self.dgp_door_ids = [d for d in expand_ranges(self.dgp_door_ranges) if d >= 17]
         else:
-            self.dgp_door_ranges = [(self.door_first_number, self.door_last_number)] if self.door_last_number >= self.door_first_number and self.door_last_number > 0 else []
-            self.dgp_door_ids = [d for d in range(self.door_first_number, self.door_last_number + 1) if d >= 17] if self.dgp_door_ranges else []
+            self.dgp_door_ranges = [(self.door_first, self.door_last)] if self.door_last >= self.door_first and self.door_last > 0 else []
+            self.dgp_door_ids = [d for d in range(self.door_first, self.door_last + 1) if d >= 17] if self.dgp_door_ranges else []
 
         # RAS / keypad / single door controller selection (doors 1-16). e.g. 3,6,8 or 1-16
         self.ras_door_ranges_spec = str(cfg.get(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES) or '').strip()
@@ -285,7 +285,7 @@ class TecomHub:
                 _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
 
             # Door status init can be required before per-door status requests.
-            if self.door_ids and not self._door_status_inited:
+            if getattr(self, 'dgp_door_ids', None) and not self._door_status_inited:
                 try:
                     await self._send_command(proto.cmd_door_status_init())
                     self._door_status_inited = True

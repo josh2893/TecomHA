@@ -41,6 +41,8 @@ from .const import (
     CONF_DOORS_COUNT,
     CONF_DOOR_FIRST,
     CONF_DOOR_LAST,
+    CONF_DGP_DOOR_RANGES,
+    CONF_RAS_DOOR_RANGES,
     CONF_RELAY_RANGES,
     CONF_INPUT_RANGES,
     CONF_SEND_ACKS,
@@ -136,6 +138,8 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS)
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
+    d.setdefault(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES)
+    d.setdefault(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES)
     return d
 
 
@@ -195,6 +199,13 @@ def _schema(defaults: dict) -> vol.Schema:
             ),
             vol.Required(CONF_DOOR_LAST, default=int(defaults.get(CONF_DOOR_LAST, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
+            ),
+            # Door selection (advanced)
+            vol.Optional(CONF_DGP_DOOR_RANGES, default=str(defaults.get(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES))): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+            vol.Optional(CONF_RAS_DOOR_RANGES, default=str(defaults.get(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES))): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
             ),
 
             # Relays: either contiguous (1..relays_count) or ranges via relay_ranges (overrides).
