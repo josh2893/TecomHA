@@ -213,7 +213,7 @@ class TecomHub:
         self._type_offset_known: bool = False
         self._send_lock = asyncio.Lock()
         self._last_send_monotonic: float = 0.0
-        self._min_send_interval: float = max(0.0, float(self.min_send_interval_ms) / 1000.0)
+        self._min_send_interval: float = max(0.0, float(self.min_send_interval_ms) / 1000.0)  # seconds
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
@@ -410,16 +410,16 @@ class TecomHub:
     async def _poll_loop(self) -> None:
         while True:
             try:
-                # Poll first, then sleep.
-                if getattr(self, "input_poll_ranges", None):
+                # Poll first, then sleep (so state updates quickly after reload/startup).
+                if getattr(self, 'input_poll_ranges', None):
                     for rs, re_ in self.input_poll_ranges:
                         await self.async_request_inputs(rs, re_)
 
-                if getattr(self, "relay_poll_ranges", None):
+                if getattr(self, 'relay_poll_ranges', None):
                     for rs, re_ in self.relay_poll_ranges:
                         await self.async_request_relays(rs, re_)
 
-                if getattr(self, "areas_count", 0) and self.areas_count > 0:
+                if getattr(self, 'areas_count', 0) and self.areas_count > 0:
                     await self.async_request_areas(1, self.areas_count)
 
                 await self.async_request_doors()
@@ -474,7 +474,7 @@ class TecomHub:
         mode = (self.door_status_mode or DEFAULT_DOOR_STATUS_MODE).lower()
         per = max(1, int(self.door_status_per_cycle or 1))
 
-        if mode == "all_each_cycle":
+        if mode == 'all_each_cycle':
             for door in self.door_ids:
                 await self._send_command(proto.cmd_request_door_status_wrapped(door))
             return

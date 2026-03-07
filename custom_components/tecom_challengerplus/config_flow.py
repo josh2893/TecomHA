@@ -101,6 +101,7 @@ ENC_SELECTOR = selector.SelectSelector(
 )
 
 
+
 DOOR_STATUS_MODE_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
         options=[
