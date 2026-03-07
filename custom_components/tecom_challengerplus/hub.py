@@ -53,6 +53,8 @@ from .const import (
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DGP_DOOR_RANGES,
     DEFAULT_RAS_DOOR_RANGES,
+    CONF_DGP_DOOR_RANGES,
+    CONF_RAS_DOOR_RANGES,
 )
 from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
