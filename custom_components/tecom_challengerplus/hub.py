@@ -650,14 +650,15 @@ class TecomHub:
                     area = start_area + i
                     self.state.area_words[area] = w
 
+                    # Briefly preserve optimistic UI state after an HA-issued arm/disarm,
+                    # then resume reflecting panel-reported words/events.
                     until = self._area_override_until.get(area, 0.0)
                     if now < until:
                         continue
 
-                    existing = self.state.areas.get(area)
-                    if existing in ("armed", "disarmed", "home", "alarm"):
-                        continue
-
+                    # Confirmed from captures on this panel: 0x0000 and 0x0006 are disarmed.
+                    # Treat any other observed word as armed for now so CTPlus/RAS-initiated
+                    # changes are visible in HA without needing a reload.
                     if w in (0x0000, 0x0003, 0x0006):
                         self.state.areas[area] = "disarmed"
                     else:
@@ -670,7 +671,7 @@ class TecomHub:
             if resp_door:
                 door, status = resp_door
                 self.state.door_words[door] = status
-                self.state.doors[door] = "unknown"
+                self.state.doors[door] = "closed" if status == 0 else "open"
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
@@ -699,6 +700,16 @@ class TecomHub:
                     self.state.areas[obj] = "armed"
                 elif code == 0x0C:
                     self.state.areas[obj] = "disarmed"
+                # Door event mappings confirmed from supplied CTPlus captures:
+                #   0xA5 on door 17 when physically opened
+                #   0xA6 / 0xAF on door 17 when physically closed/secured
+                # The entities only distinguish zero/non-zero today, so keep this conservative.
+                elif code == 0xA5:
+                    self.state.door_words[obj] = 1
+                    self.state.doors[obj] = "open"
+                elif code in (0xA6, 0xAF):
+                    self.state.door_words[obj] = 0
+                    self.state.doors[obj] = "closed"
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
