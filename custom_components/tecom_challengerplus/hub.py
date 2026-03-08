@@ -807,6 +807,50 @@ class TecomHub:
         self.state.last_event = f"CTPlus {fr.msg_type:02X} {fr.body.hex()}"
         self._notify()
 
+    async def async_dump_debug(self) -> str:
+        """Dump recent RX/TX frames and current state to /config for support/debugging."""
+        try:
+            path = self.hass.config.path(f"tecom_challengerplus_debug_{int(time.time())}.json")
+            data = {
+                "ts": time.time(),
+                "host": self.host,
+                "mode": self.mode,
+                "transport": self.transport,
+                "peer": str(getattr(self, "_udp_last_peer", None)),
+                "config": {
+                    "poll_interval": self.poll_interval,
+                    "door_status_mode": self.door_status_mode,
+                    "door_status_per_cycle": self.door_status_per_cycle,
+                    "min_send_interval_ms": self.min_send_interval_ms,
+                    "dgp_door_ids": list(self.dgp_door_ids),
+                    "ras_door_ids": list(self.ras_door_ids),
+                    "input_ids": list(self.input_ids),
+                    "areas_count": self.areas_count,
+                },
+                "state": {
+                    "last_event": self.state.last_event,
+                    "inputs": dict(self.state.inputs),
+                    "relays": dict(self.state.relays),
+                    "doors": dict(self.state.doors),
+                    "door_words": {str(k): f"0x{v:04X}" for k, v in self.state.door_words.items()},
+                    "areas": dict(self.state.areas),
+                    "area_words": {str(k): f"0x{v:04X}" for k, v in self.state.area_words.items()},
+                    "ras_status": {str(k): f"0x{v:02X}" for k, v in self.state.ras_status.items()},
+                },
+                "recent_frames": list(self._debug_frames),
+            }
+
+            def _write() -> None:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+
+            await self.hass.async_add_executor_job(_write)
+            _LOGGER.warning("Tecom ChallengerPlus debug dump written: %s", path)
+            return path
+        except Exception:
+            _LOGGER.exception("Failed to write debug dump")
+            return ""
+
     # -------------------------
     # Control helpers
 
@@ -845,25 +889,3 @@ class TecomHub:
 
         await self._send_command(proto.cmd_area_disarm(area))
 
-
-async def async_dump_debug(self) -> str:
-    """Dump recent RX/TX frames to /config for support/debugging."""
-    try:
-        path = self.hass.config.path(f"tecom_challengerplus_debug_{int(time.time())}.json")
-        data = {
-            "ts": time.time(),
-            "host": self.host,
-            "mode": self.mode,
-            "peer": str(getattr(self, "_udp_last_peer", None)),
-            "recent_frames": list(self._debug_frames),
-        }
-        # Write via executor to avoid blocking event loop
-        def _write():
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        await self.hass.async_add_executor_job(_write)
-        _LOGGER.warning("Tecom ChallengerPlus debug dump written: %s", path)
-        return path
-    except Exception:
-        _LOGGER.exception("Failed to write debug dump")
-        return ""
