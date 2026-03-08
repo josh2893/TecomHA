@@ -252,8 +252,11 @@ class TecomHub:
         # Retransmitted panel events can repeat if the ACK is not seen quickly enough.
         # Keep a short cache so duplicates do not flood the HA event bus.
         self._recent_event_keys: dict[tuple[int, str], float] = {}
+        # Limited queue recovery for clearly stuck retransmits only.
+        self._event_repeat_counts: dict[tuple[int, str], int] = {}
         self._retrieve_events_task: asyncio.Task | None = None
         self._last_retrieve_events_monotonic: float = 0.0
+        self._last_retrieve_events_key: tuple[int, str] | None = None
 
 
     def _next_seq(self) -> int:
@@ -715,7 +718,7 @@ class TecomHub:
                 if delay > 0:
                     await asyncio.sleep(delay)
                 now = asyncio.get_running_loop().time()
-                cooldown = max(0.25, self._min_send_interval * 2.0)
+                cooldown = max(10.0, float(self.poll_interval) * 2.0, self._min_send_interval * 10.0)
                 wait_for = (self._last_retrieve_events_monotonic + cooldown) - now
                 if wait_for > 0:
                     await asyncio.sleep(wait_for)
@@ -731,17 +734,25 @@ class TecomHub:
 
         self._retrieve_events_task = asyncio.create_task(_runner())
 
-    def _is_duplicate_panel_event(self, fr: proto.Frame) -> bool:
-        """Return True when an unsolicited panel event is a recent retransmit."""
+    def _note_panel_event_retransmit(self, fr: proto.Frame) -> int:
+        """Track repeated identical panel events and return the current seen count."""
         key = (fr.seq, fr.body.hex())
         now = time.monotonic()
         for k, until in list(self._recent_event_keys.items()):
             if until <= now:
                 self._recent_event_keys.pop(k, None)
+                self._event_repeat_counts.pop(k, None)
         if key in self._recent_event_keys:
-            return True
+            self._event_repeat_counts[key] = self._event_repeat_counts.get(key, 1) + 1
+            return self._event_repeat_counts[key]
         self._recent_event_keys[key] = now + max(20.0, float(self.poll_interval) * 4.0)
-        return False
+        self._event_repeat_counts[key] = 1
+        return 1
+
+
+    def _is_duplicate_panel_event(self, fr: proto.Frame) -> bool:
+        """Return True when an unsolicited panel event is a recent retransmit."""
+        return self._note_panel_event_retransmit(fr) > 1
 
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
@@ -863,18 +874,18 @@ class TecomHub:
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
-                # Nudge the panel to advance/drain its queued event buffer like CTPlus "Retrieve events".
-                # This keeps one stuck access/door/alarm event from being retransmitted forever.
-                self._schedule_retrieve_events(reason=f"ev_{code:02X}_{obj}")
-
-                # If the panel retransmits the same event because it has not yet advanced the queue,
-                # avoid flooding HA with duplicates. We still ACK every copy above and re-issue the
-                # queue-drain nudge immediately.
-                if self._is_duplicate_panel_event(fr):
-                    self._schedule_retrieve_events(delay=0.0, reason=f"dup_{code:02X}_{obj}")
+                # Suppress retransmitted duplicates on the HA event bus, but only attempt queue
+                # recovery when the *same* event is clearly stuck and repeating.
+                repeat_count = self._note_panel_event_retransmit(fr)
+                if repeat_count > 1:
+                    key = (fr.seq, fr.body.hex())
+                    if repeat_count >= 3 and self._last_retrieve_events_key != key:
+                        self._last_retrieve_events_key = key
+                        self._schedule_retrieve_events(delay=0.0, reason=f"stuck_{code:02X}_{obj}")
                     self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
                     self._notify()
                     return
+                self._last_retrieve_events_key = None
 
                 self.state.last_event = payload.get('text') or payload.get('message')
                 self.hass.bus.async_fire(f"{DOMAIN}_event", payload)
@@ -884,7 +895,6 @@ class TecomHub:
                 return
 
             # Unknown 0x40 frame (data but not parsed)
-            self._schedule_retrieve_events(reason="unknown_40")
             self.state.last_event = f"CTPlus 0x40 {fr.body.hex()}"
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": fr.body.hex(), "len": len(fr.body)})
             self._notify()
