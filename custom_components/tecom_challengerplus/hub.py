@@ -207,6 +207,9 @@ class TecomHub:
 
         self.state = TecomState()
         self._area_override_until: dict[int, float] = {}
+        # When a live door event arrives, prefer it briefly over polled replies so
+        # queued/stale poll responses do not make door contacts appear to lag.
+        self._door_event_prefer_until: dict[int, float] = {}
 
         self._listeners: set[UpdateCallback] = set()
 
@@ -534,18 +537,28 @@ class TecomHub:
         doors_to_poll: list[int] = []
         mode = (self.door_status_mode or DEFAULT_DOOR_STATUS_MODE).lower()
         per = max(1, int(self.door_status_per_cycle or 1))
+        now = asyncio.get_running_loop().time()
+
+        def _eligible(door: int) -> bool:
+            if force_all:
+                return True
+            return now >= self._door_event_prefer_until.get(door, 0.0)
+
+        eligible_doors = [door for door in self.dgp_door_ids if _eligible(door)]
+        if not eligible_doors and not force_all:
+            return
 
         if force_all or mode == "all_each_cycle":
-            doors_to_poll = list(self.dgp_door_ids)
+            doors_to_poll = list(eligible_doors if not force_all else self.dgp_door_ids)
         else:
-            unknown = [door for door in self.dgp_door_ids if self.state.door_words.get(door) is None]
+            unknown = [door for door in eligible_doors if self.state.door_words.get(door) is None]
             if unknown:
                 doors_to_poll.extend(unknown[:per])
 
-            while len(doors_to_poll) < min(per, len(self.dgp_door_ids)):
+            while len(doors_to_poll) < min(per, len(eligible_doors)):
                 door = self.dgp_door_ids[self._dgp_door_poll_idx % len(self.dgp_door_ids)]
                 self._dgp_door_poll_idx = (self._dgp_door_poll_idx + 1) % len(self.dgp_door_ids)
-                if door in doors_to_poll:
+                if door in doors_to_poll or door not in eligible_doors:
                     continue
                 doors_to_poll.append(door)
 
@@ -713,8 +726,23 @@ class TecomHub:
             # door status response
             if resp_door:
                 door, status = resp_door
+                decoded = self._decode_door_contact_state(status)
+                now = asyncio.get_running_loop().time()
+                # Prefer a just-received unsolicited door event over a queued poll reply.
+                # This prevents stale/open poll responses from delaying an immediate close
+                # (and vice versa) when the user is actively operating a door.
+                if now < self._door_event_prefer_until.get(door, 0.0):
+                    current = self.state.doors.get(door)
+                    if current in ("open", "closed") and decoded != current:
+                        _LOGGER.debug(
+                            "Ignoring polled Door %s status 0x%04X during live-event preference window (current=%s)",
+                            door,
+                            status,
+                            current,
+                        )
+                        return
                 self.state.door_words[door] = status
-                self.state.doors[door] = self._decode_door_contact_state(status)
+                self.state.doors[door] = decoded
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
@@ -750,9 +778,11 @@ class TecomHub:
                 elif code == 0xA5:
                     self.state.door_words[obj] = 1
                     self.state.doors[obj] = "open"
+                    self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
                 elif code in (0xA6, 0xAF):
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
+                    self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
