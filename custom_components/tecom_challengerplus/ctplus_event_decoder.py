@@ -29,6 +29,10 @@ def decode_ctplus_event(code: int, obj: int, raw_hex: str) -> dict:
         text = f"Door {obj} Contact closed"
     elif code == 0xAF:
         text = f"Door {obj} was locked"
+    elif code == 0x59:
+        text = f"CTPlus path event 0x59 object {obj}"
+    elif code == 0x5A:
+        text = f"CTPlus path event 0x5A object {obj}"
     else:
         text = f"CTPlus event {code_hex} object {obj} ({obj_hex})"
 
