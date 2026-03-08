@@ -97,6 +97,18 @@ class TecomUDPRaw(TecomTransportBase):
             raise TecomConnectionError("UDP transport not started")
         self._transport.sendto(data, addr)
 
+    def sendto_nowait(self, data: bytes, addr) -> None:  # noqa: ANN001
+        """Immediate best-effort send for time-critical UDP replies like panel ACKs."""
+        if not self._transport:
+            raise TecomConnectionError("UDP transport not started")
+        self._transport.sendto(data, addr)
+
+    def send_nowait(self, data: bytes) -> None:
+        """Immediate best-effort send to the configured remote peer."""
+        if not self._transport:
+            raise TecomConnectionError("UDP transport not started")
+        self._transport.sendto(data, self._remote)
+
 
 # -------------------------
 # TCP raw (bytes)

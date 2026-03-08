@@ -226,13 +226,6 @@ class TecomHub:
         self._send_lock = asyncio.Lock()
         self._last_send_monotonic: float = 0.0
         self._min_send_interval: float = max(0.0, float(self.min_send_interval_ms) / 1000.0)  # seconds
-        # Background polling cadence. Inputs/areas are mostly event-driven on this panel, so
-        # keep them as lightweight fallback polls and reserve frequent polling for doors only.
-        self._last_inputs_poll: float = 0.0
-        self._last_relays_poll: float = 0.0
-        self._last_areas_poll: float = 0.0
-        self._last_ras_poll: float = 0.0
-        self._door_refresh_tasks: dict[int, asyncio.Task] = {}
         # Door selection: DGP doors (17+) can be specified as ranges, e.g. 17-20,21-24,33-36.
         self.dgp_door_ranges_spec = str(cfg.get(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES) or '').strip()
         if self.dgp_door_ranges_spec:
@@ -256,6 +249,9 @@ class TecomHub:
 
         # Debug ring buffer (last N frames).
         self._debug_frames = deque(maxlen=500)
+        # Retransmitted panel events can repeat if the ACK is not seen quickly enough.
+        # Keep a short cache so duplicates do not flood the HA event bus.
+        self._recent_event_keys: dict[tuple[int, str], float] = {}
 
 
     def _next_seq(self) -> int:
@@ -320,11 +316,6 @@ class TecomHub:
                     await self.async_request_areas(1, self.areas_count)
 
                 await self.async_request_doors(force_all=True)
-                now = asyncio.get_running_loop().time()
-                self._last_inputs_poll = now
-                self._last_relays_poll = now
-                self._last_areas_poll = now
-                self._last_ras_poll = now
             except Exception:
                 _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
 
@@ -341,10 +332,6 @@ class TecomHub:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._heartbeat_task
             self._heartbeat_task = None
-
-        for task in list(self._door_refresh_tasks.values()):
-            task.cancel()
-        self._door_refresh_tasks.clear()
 
         if self._transport_obj:
             await self._transport_obj.async_stop()
@@ -481,33 +468,21 @@ class TecomHub:
     async def _poll_loop(self) -> None:
         while True:
             try:
-                # Keep door polling responsive, but make the other classes lightweight fallback
-                # polls so unsolicited access/alarm events have room to flow on the comms path.
-                now = asyncio.get_running_loop().time()
-
-                inputs_every = max(30, self.poll_interval * 6)
-                relays_every = max(30, self.poll_interval * 6)
-                areas_every = max(15, self.poll_interval * 3)
-                ras_every = max(15, self.poll_interval * 3)
-
-                if getattr(self, 'input_poll_ranges', None) and (now - self._last_inputs_poll) >= inputs_every:
+                # Poll first, then sleep (so state updates quickly after reload/startup).
+                if getattr(self, 'input_poll_ranges', None):
                     for rs, re_ in self.input_poll_ranges:
                         await self.async_request_inputs(rs, re_)
-                    self._last_inputs_poll = now
 
-                if getattr(self, 'relay_poll_ranges', None) and (now - self._last_relays_poll) >= relays_every:
+                if getattr(self, 'relay_poll_ranges', None):
                     for rs, re_ in self.relay_poll_ranges:
                         await self.async_request_relays(rs, re_)
-                    self._last_relays_poll = now
 
-                if getattr(self, 'areas_count', 0) and self.areas_count > 0 and (now - self._last_areas_poll) >= areas_every:
+                if getattr(self, 'areas_count', 0) and self.areas_count > 0:
                     await self.async_request_areas(1, self.areas_count)
-                    self._last_areas_poll = now
-
-                if getattr(self, 'ras_door_ids', None) and (now - self._last_ras_poll) >= ras_every:
+                if getattr(self, 'ras_door_ids', None):
                     for ras in self.ras_door_ids:
                         await self._send_command(proto.cmd_request_ras_status(ras))
-                    self._last_ras_poll = now
+
 
                 await self.async_request_doors()
 
@@ -516,7 +491,6 @@ class TecomHub:
                 return
             except Exception:
                 _LOGGER.exception("Poll loop error")
-
     async def async_request_inputs(self, start: int, end: int) -> None:
         max_chunk = 128
         cur = start
@@ -593,29 +567,6 @@ class TecomHub:
 
         for door in doors_to_poll:
             await self._send_command(proto.cmd_request_door_status_wrapped(door))
-
-    def _schedule_door_refresh(self, door: int, delay: float = 0.35) -> None:
-        """Queue a targeted door refresh shortly after a live event/control action.
-
-        CTPlus appears to ACK the unsolicited event first, then performs a focused status read
-        for the affected object. Mirroring that behaviour is much lighter than waiting for the
-        next round-robin turn.
-        """
-        if door not in getattr(self, "dgp_door_ids", []):
-            return
-        existing = self._door_refresh_tasks.get(door)
-        if existing and not existing.done():
-            existing.cancel()
-        self._door_refresh_tasks[door] = asyncio.create_task(self._async_delayed_door_refresh(door, delay))
-
-    async def _async_delayed_door_refresh(self, door: int, delay: float) -> None:
-        try:
-            await asyncio.sleep(max(0.0, delay))
-            await self._send_command(proto.cmd_request_door_status_wrapped(door))
-        except asyncio.CancelledError:
-            return
-        except Exception:
-            _LOGGER.debug("Targeted door refresh failed for door %s", door, exc_info=True)
 
     def _decode_door_contact_state(self, status: int) -> str:
         """Best-effort contact decoding from observed CTPlus door status words.
@@ -716,29 +667,56 @@ class TecomHub:
         if rem and rem != data:
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": rem.hex(), "len": len(rem)})
 
+    def _send_panel_ack_immediate(self, fr: proto.Frame) -> None:
+        """Send a panel ACK immediately for unsolicited 0x40 frames.
+
+        Using create_task() here proved too soft under load; for UDP we want the ACK
+        on the wire as quickly as possible so the panel clears its event queue instead
+        of retransmitting the same access/door event every poll cycle.
+        """
+        if not self.send_acks or self._udp_last_peer is None:
+            return
+        payload = proto.build_ack(
+            fr.seq,
+            # ACK format does not mirror the incoming FF-marker.
+            has_ff=False,
+            type_offset=getattr(fr, 'type_offset', self._type_offset),
+        ).to_bytes()
+        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex(), 'note': 'panel_ack'})
+        try:
+            if hasattr(self._transport_obj, 'sendto_nowait'):
+                self._transport_obj.sendto_nowait(payload, self._udp_last_peer)
+                return
+        except Exception as err:  # pragma: no cover - defensive logging
+            _LOGGER.debug("Immediate UDP ACK failed, falling back to async send: %s", err)
+
+        # Fallback for non-UDP / unusual transport objects.
+        asyncio.create_task(self.async_send_bytes(payload, addr=self._udp_last_peer))
+
+    def _is_duplicate_panel_event(self, fr: proto.Frame) -> bool:
+        """Return True when an unsolicited panel event is a recent retransmit."""
+        key = (fr.seq, fr.body.hex())
+        now = time.monotonic()
+        for k, until in list(self._recent_event_keys.items()):
+            if until <= now:
+                self._recent_event_keys.pop(k, None)
+        if key in self._recent_event_keys:
+            return True
+        self._recent_event_keys[key] = now + max(20.0, float(self.poll_interval) * 4.0)
+        return False
+
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
-            # Attempt to classify this 0x40 payload as a status response or unsolicited event.
+            # Always ACK 0x40 frames immediately (panel expects this for comms path health
+            # and to dequeue access/alarm events).
+            self._send_panel_ack_immediate(fr)
+
+            # Attempt to classify this 0x40 payload as a status response or event.
             resp_in = proto.parse_input_status_response(fr.body)
             resp_rel = proto.parse_relay_status_response(fr.body)
             resp_area = proto.parse_area_status_response(fr.body)
             resp_door = proto.parse_door_status_response(fr.body)
-            resp_ras = proto.parse_ras_status_response(fr.body)
             ev = proto.parse_event(fr.body)
-
-            # Only ACK unsolicited/unknown 0x40 frames. Status responses on this path do not
-            # appear to need host ACKs, while queued access/alarm events definitely do.
-            if self.send_acks and self._udp_last_peer is not None and not any((resp_in, resp_rel, resp_area, resp_door, resp_ras)):
-                asyncio.create_task(
-                    self.async_send_bytes(
-                        proto.build_ack(
-                            fr.seq,
-                            has_ff=getattr(fr, 'has_ff', False),
-                            type_offset=getattr(fr, 'type_offset', self._type_offset),
-                        ).to_bytes(),
-                        addr=self._udp_last_peer,
-                    )
-                )
 
             # input status response
             if resp_in:
@@ -808,6 +786,7 @@ class TecomHub:
                 self._notify()
                 return
             # RAS status response (doors 1-16 / keypads / single door controllers)
+            resp_ras = proto.parse_ras_status_response(fr.body)
             if resp_ras:
                 ras, status = resp_ras
                 self.state.ras_status[ras] = status
@@ -839,14 +818,19 @@ class TecomHub:
                     self.state.door_words[obj] = 1
                     self.state.doors[obj] = "open"
                     self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
-                    self._schedule_door_refresh(obj, delay=0.25)
                 elif code in (0xA6, 0xAF):
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
                     self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
-                    self._schedule_door_refresh(obj, delay=0.25)
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
+
+                # If the panel retransmits the same event because it has not yet seen our ACK,
+                # avoid flooding HA with duplicates. We still ACK every copy above.
+                if self._is_duplicate_panel_event(fr):
+                    self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
+                    self._notify()
+                    return
 
                 self.state.last_event = payload.get('text') or payload.get('message')
                 self.hass.bus.async_fire(f"{DOMAIN}_event", payload)
