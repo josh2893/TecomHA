@@ -257,6 +257,11 @@ class TecomHub:
         self._retrieve_events_task: asyncio.Task | None = None
         self._last_retrieve_events_monotonic: float = 0.0
         self._last_retrieve_events_key: tuple[int, str] | None = None
+        # Per-input targeted refresh tasks. CTPlus issues a narrow input status query
+        # right after 0x96/0x97 input events on the active computer comms path.
+        # Doing the same helps bursts of egress+door events keep flowing without using
+        # the more disruptive global "Retrieve events" command.
+        self._input_refresh_tasks: dict[int, asyncio.Task] = {}
 
 
     def _next_seq(self) -> int:
@@ -337,6 +342,12 @@ class TecomHub:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._heartbeat_task
             self._heartbeat_task = None
+
+        for task in list(self._input_refresh_tasks.values()):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._input_refresh_tasks.clear()
 
         if self._transport_obj:
             await self._transport_obj.async_stop()
@@ -700,6 +711,42 @@ class TecomHub:
 
 
 
+
+    def _schedule_input_status_refresh(self, input_no: int, *, delay: float = 0.015) -> None:
+        """Send a narrow input status query shortly after an input event.
+
+        CTPlus captures on comms path 3/3001 show that after 0x96/0x97 input events
+        (for example an egress input), CTPlus quickly issues "09 04 <n> <n>" for
+        that same input. This appears to help subsequent door/access events in the burst
+        arrive cleanly without forcing a global queue reset/retrieve.
+        """
+        if self.mode != MODE_CTPLUS or input_no <= 0:
+            return
+        task = self._input_refresh_tasks.get(input_no)
+        if task and not task.done():
+            return
+
+        async def _runner() -> None:
+            try:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                await self._send_command(proto.cmd_request_input_status(input_no, input_no))
+                self._debug_frames.append({
+                    'ts': time.time(),
+                    'dir': 'note',
+                    'peer': str(self._udp_last_peer),
+                    'hex': '',
+                    'note': f'input_refresh:{input_no}',
+                })
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug("input status refresh failed for input %s", input_no, exc_info=True)
+            finally:
+                self._input_refresh_tasks.pop(input_no, None)
+
+        self._input_refresh_tasks[input_no] = asyncio.create_task(_runner())
+
     def _schedule_retrieve_events(self, *, delay: float = 0.05, reason: str = "event") -> None:
         """Ask the panel for the next queued event, like CTPlus "Retrieve events".
 
@@ -849,8 +896,10 @@ class TecomHub:
                 code, obj = ev
                 if code == 0x96:
                     self.state.inputs[obj] = False
+                    self._schedule_input_status_refresh(obj)
                 elif code == 0x97:
                     self.state.inputs[obj] = True
+                    self._schedule_input_status_refresh(obj)
                 elif code == 0x84:
                     self.state.relays[obj] = True
                 elif code == 0x85:
@@ -874,14 +923,13 @@ class TecomHub:
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
-                # Suppress retransmitted duplicates on the HA event bus, but only attempt queue
-                # recovery when the *same* event is clearly stuck and repeating.
+                # Suppress retransmitted duplicates on the HA event bus.
+                # Do not automatically fire the global "Retrieve events" command here:
+                # captures show that command is useful as a manual recovery tool, but when
+                # injected into normal event flow on path 3 it causes "path event reset"
+                # churn and missed close-together events.
                 repeat_count = self._note_panel_event_retransmit(fr)
                 if repeat_count > 1:
-                    key = (fr.seq, fr.body.hex())
-                    if repeat_count >= 3 and self._last_retrieve_events_key != key:
-                        self._last_retrieve_events_key = key
-                        self._schedule_retrieve_events(delay=0.0, reason=f"stuck_{code:02X}_{obj}")
                     self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
                     self._notify()
                     return
