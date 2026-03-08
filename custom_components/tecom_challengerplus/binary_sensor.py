@@ -90,10 +90,16 @@ class TecomDoorContactBinarySensor(BinarySensorEntity):
 
     @property
     def is_on(self):
+        state = getattr(self._hub.state, "doors", {}).get(self._door)
+        if state == "open":
+            return True
+        if state == "closed":
+            return False
+
         w = getattr(self._hub.state, "door_words", {}).get(self._door)
         if w is None:
             return None
-        return w != 0
+        return bool(w & 0x0080)
 
 
 class TecomRasContact(BinarySensorEntity):

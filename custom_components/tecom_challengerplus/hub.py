@@ -309,7 +309,7 @@ class TecomHub:
                 if getattr(self, "areas_count", 0) and self.areas_count > 0:
                     await self.async_request_areas(1, self.areas_count)
 
-                await self.async_request_doors()
+                await self.async_request_doors(force_all=True)
             except Exception:
                 _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
 
@@ -408,19 +408,38 @@ class TecomHub:
             await self._transport_obj.async_sendto(payload, addr)
         else:
             await self._transport_obj.async_send(payload)
+
     async def _send_frame(self, frame: proto.Frame) -> None:
-        await self.async_send_bytes(frame.to_bytes())
+        payload = frame.to_bytes()
+        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex()})
+        await self.async_send_bytes(payload)
+
+    async def _send_frame_paced(self, frame: proto.Frame) -> None:
+        """Send a host-initiated CTPlus frame with pacing.
+
+        We intentionally do *not* use this for ACKs to panel-originated 0x40 frames, because
+        those should be returned immediately. Everything else (polling, control, heartbeat,
+        startup/session init) is paced so door-status polling behaves more like CTPlus.
+        """
+        async with self._send_lock:
+            if self._min_send_interval > 0:
+                now = asyncio.get_running_loop().time()
+                wait_for = (self._last_send_monotonic + self._min_send_interval) - now
+                if wait_for > 0:
+                    await asyncio.sleep(wait_for)
+            await self._send_frame(frame)
+            self._last_send_monotonic = asyncio.get_running_loop().time()
 
     async def _send_command(self, body: bytes, type_offset: int | None = None) -> None:
         seq = self._next_seq()
         # If panel type offset isn't known yet, send both variants (0x00 and 0x40).
         if type_offset is None and not self._type_offset_known:
-            await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=0x00))
-            await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=0x40))
+            await self._send_frame_paced(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=0x00))
+            await self._send_frame_paced(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=0x40))
             return
         if type_offset is None:
             type_offset = self._type_offset
-        await self._send_frame(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=type_offset))
+        await self._send_frame_paced(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=type_offset))
     async def _heartbeat_loop(self) -> None:
         """Send CTPlus keepalive frequently so panel does not declare path down."""
         while True:
@@ -430,10 +449,10 @@ class TecomHub:
                     continue
 
                 if not self._type_offset_known:
-                    await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=0x00))
-                    await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=0x40))
+                    await self._send_frame_paced(proto.build_heartbeat(self._next_seq(), type_offset=0x00))
+                    await self._send_frame_paced(proto.build_heartbeat(self._next_seq(), type_offset=0x40))
                 else:
-                    await self._send_frame(proto.build_heartbeat(self._next_seq(), type_offset=self._type_offset))
+                    await self._send_frame_paced(proto.build_heartbeat(self._next_seq(), type_offset=self._type_offset))
 
                 await asyncio.sleep(max(1, int(self.heartbeat_interval or DEFAULT_HEARTBEAT_INTERVAL_SECONDS)))
             except asyncio.CancelledError:
@@ -495,12 +514,16 @@ class TecomHub:
             await self._send_command(proto.cmd_request_area_status(cur, count))
             cur += count
 
-    async def async_request_doors(self) -> None:
+    async def async_request_doors(self, force_all: bool = False) -> None:
         """Request status for DGP doors (17+) only.
 
-        Use Options:
-          - door_status_mode: round_robin / all_each_cycle
-          - door_status_per_cycle
+        Behavior:
+          - startup / explicit full sync: poll every configured DGP door once
+          - all_each_cycle: poll every DGP door every cycle
+          - round_robin: prioritise still-unknown doors first, then resume round-robin
+
+        The goal is to populate door contacts promptly after HA reloads without turning every
+        cycle into a full burst of door requests.
         """
         if not getattr(self, "dgp_door_ids", None):
             return
@@ -508,19 +531,39 @@ class TecomHub:
             await self._send_command(proto.cmd_door_status_init())
             self._door_status_inited = True
 
+        doors_to_poll: list[int] = []
         mode = (self.door_status_mode or DEFAULT_DOOR_STATUS_MODE).lower()
         per = max(1, int(self.door_status_per_cycle or 1))
 
-        if mode == "all_each_cycle":
-            for door in self.dgp_door_ids:
-                await self._send_command(proto.cmd_request_door_status_wrapped(door))
-            return
+        if force_all or mode == "all_each_cycle":
+            doors_to_poll = list(self.dgp_door_ids)
+        else:
+            unknown = [door for door in self.dgp_door_ids if self.state.door_words.get(door) is None]
+            if unknown:
+                doors_to_poll.extend(unknown[:per])
 
-        # round_robin
-        for _ in range(min(per, len(self.dgp_door_ids))):
-            door = self.dgp_door_ids[self._dgp_door_poll_idx % len(self.dgp_door_ids)]
-            self._dgp_door_poll_idx = (self._dgp_door_poll_idx + 1) % len(self.dgp_door_ids)
+            while len(doors_to_poll) < min(per, len(self.dgp_door_ids)):
+                door = self.dgp_door_ids[self._dgp_door_poll_idx % len(self.dgp_door_ids)]
+                self._dgp_door_poll_idx = (self._dgp_door_poll_idx + 1) % len(self.dgp_door_ids)
+                if door in doors_to_poll:
+                    continue
+                doors_to_poll.append(door)
+
+        for door in doors_to_poll:
             await self._send_command(proto.cmd_request_door_status_wrapped(door))
+
+    def _decode_door_contact_state(self, status: int) -> str:
+        """Best-effort contact decoding from observed CTPlus door status words.
+
+        Observations from supplied captures so far:
+          - 0x0000  => physically closed / secure
+          - 0xC010  => physically closed while not secure/locked
+          - 0xC090  => physically open
+
+        The 0x0080 bit appears to track contact-open state, so keep the mapping narrow and
+        contact-focused here. Raw words are still preserved separately for diagnostics/UI.
+        """
+        return "open" if (status & 0x0080) else "closed"
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -671,7 +714,7 @@ class TecomHub:
             if resp_door:
                 door, status = resp_door
                 self.state.door_words[door] = status
-                self.state.doors[door] = "closed" if status == 0 else "open"
+                self.state.doors[door] = self._decode_door_contact_state(status)
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
