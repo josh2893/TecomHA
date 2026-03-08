@@ -252,6 +252,8 @@ class TecomHub:
         # Retransmitted panel events can repeat if the ACK is not seen quickly enough.
         # Keep a short cache so duplicates do not flood the HA event bus.
         self._recent_event_keys: dict[tuple[int, str], float] = {}
+        self._retrieve_events_task: asyncio.Task | None = None
+        self._last_retrieve_events_monotonic: float = 0.0
 
 
     def _next_seq(self) -> int:
@@ -693,6 +695,42 @@ class TecomHub:
         # Fallback for non-UDP / unusual transport objects.
         asyncio.create_task(self.async_send_bytes(payload, addr=self._udp_last_peer))
 
+
+
+    def _schedule_retrieve_events(self, *, delay: float = 0.05, reason: str = "event") -> None:
+        """Ask the panel for the next queued event, like CTPlus "Retrieve events".
+
+        This is used as a queue-drain nudge after live 0x40 events. Captures show CTPlus
+        issuing 07 03 0E 03 03 on the same comms path to pull/advance queued events.
+        Without this, some panels keep retransmitting the same queued access/door event even
+        though the immediate 0x73/0xB3 ACK is on the wire.
+        """
+        if self.mode != MODE_CTPLUS:
+            return
+        if self._retrieve_events_task and not self._retrieve_events_task.done():
+            return
+
+        async def _runner() -> None:
+            try:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                now = asyncio.get_running_loop().time()
+                cooldown = max(0.25, self._min_send_interval * 2.0)
+                wait_for = (self._last_retrieve_events_monotonic + cooldown) - now
+                if wait_for > 0:
+                    await asyncio.sleep(wait_for)
+                await self._send_command(proto.cmd_retrieve_events())
+                self._last_retrieve_events_monotonic = asyncio.get_running_loop().time()
+                self._debug_frames.append({'ts': time.time(), 'dir': 'note', 'peer': str(self._udp_last_peer), 'hex': '', 'note': f'retrieve_events:{reason}'})
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug("retrieve_events command failed", exc_info=True)
+            finally:
+                self._retrieve_events_task = None
+
+        self._retrieve_events_task = asyncio.create_task(_runner())
+
     def _is_duplicate_panel_event(self, fr: proto.Frame) -> bool:
         """Return True when an unsolicited panel event is a recent retransmit."""
         key = (fr.seq, fr.body.hex())
@@ -825,9 +863,15 @@ class TecomHub:
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
-                # If the panel retransmits the same event because it has not yet seen our ACK,
-                # avoid flooding HA with duplicates. We still ACK every copy above.
+                # Nudge the panel to advance/drain its queued event buffer like CTPlus "Retrieve events".
+                # This keeps one stuck access/door/alarm event from being retransmitted forever.
+                self._schedule_retrieve_events(reason=f"ev_{code:02X}_{obj}")
+
+                # If the panel retransmits the same event because it has not yet advanced the queue,
+                # avoid flooding HA with duplicates. We still ACK every copy above and re-issue the
+                # queue-drain nudge immediately.
                 if self._is_duplicate_panel_event(fr):
+                    self._schedule_retrieve_events(delay=0.0, reason=f"dup_{code:02X}_{obj}")
                     self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
                     self._notify()
                     return
@@ -840,6 +884,7 @@ class TecomHub:
                 return
 
             # Unknown 0x40 frame (data but not parsed)
+            self._schedule_retrieve_events(reason="unknown_40")
             self.state.last_event = f"CTPlus 0x40 {fr.body.hex()}"
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": fr.body.hex(), "len": len(fr.body)})
             self._notify()

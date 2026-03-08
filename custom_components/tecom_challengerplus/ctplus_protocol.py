@@ -137,6 +137,16 @@ def cmd_area_arm_home(area: int) -> bytes:
         raise ValueError("Area must be 0-255")
     return bytes([0x02, 0x02, 0x09, area])
 
+
+def cmd_retrieve_events() -> bytes:
+    """Request delivery of queued events for the current computer comms path.
+
+    Observed when CTPlus uses the "Retrieve events" action:
+      Host->Panel: 07 03 0E 03 03
+      Panel->Host: 41/81 ACK, followed by one or more queued 0x40 events.
+    """
+    return b"\x07\x03\x0E\x03\x03"
+
 # -------------------------
 # Response / event parsing
 # -------------------------
