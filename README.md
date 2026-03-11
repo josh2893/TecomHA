@@ -1,5 +1,5 @@
 <img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/01a73e82-1592-4981-bc16-8f14fe9f388f" />
-# Tecom ChallengerPlus Home Assistant Integration
+Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
 
