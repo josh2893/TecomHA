@@ -1,0 +1,624 @@
+Heading	Description	EventCatId	LogEvent	DisplayEvent	EventType	OverrideAlarm	Priority	RestoreEventCode	SendResetToPanel	ReponseRequired	Required2ndResponse	EventCode	EventClass	Auditting	UpdateStatus	StatusOptions	MobileNotification	EventColor	ChallengerCos	ChEvent	ChSubEvent	oPoint	sPoint	oUser	sUser	oJob	sJob	oFloor	sFloor	oRegion	sRegion				PageOnEvent	PageOnAck	PageOnRemoval
+Panel Event Category																																					
+	Comms - offline	1	1	1	1	0	60	811	0	1	0	810	41	0	1	0	1	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - online	1	1	1	2	0	60	0	0	0	0	811	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Mains fail	1	1	1	1	0	60	813	0	1	0	812	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Mains restored	1	1	1	2	0	60	0	0	0	0	813	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery low	1	1	1	1	0	60	815	0	1	0	814	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery low restored	1	1	1	2	0	60	0	0	0	0	815	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Fuse fail	1	1	1	1	0	60	817	0	1	0	816	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Fuse fail restored	1	1	1	2	0	60	0	0	0	0	817	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Siren monitor fail	1	1	1	1	0	50	819	0	1	0	818	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Siren monitor restored	1	1	1	2	0	50	0	0	0	0	819	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Tamper	1	1	1	1	0	60	821	0	1	0	820	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Tamper restored	1	1	1	2	0	60	0	0	0	0	821	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery test - start	1	1	1	0	0	70	823	0	0	0	822	41	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery test - finish	1	1	1	2	0	70	0	0	0	0	823	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery test - fail	1	1	1	1	0	70	825	0	1	0	824	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery test - restored	1	1	1	2	0	70	0	0	0	0	825	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	CPU restart	1	1	1	0	0	70	0	0	0	0	826	52	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - encryption fail	1	1	1	0	0	70	0	0	0	0	827	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Isolated	1	1	1	0	0	70	832	0	0	0	831	50	0	1	3	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	De-isolated	1	1	1	2	0	70	0	0	0	0	832	50	0	1	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - panel time out	1	1	1	0	0	60	0	0	0	0	833	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - responding	1	1	1	2	0	40	0	0	0	0	834	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - bad panel data checksum	1	1	1	0	0	60	0	0	0	0	835	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - no response	1	1	1	1	0	40	834	0	1	0	836	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - packet short	1	1	1	0	0	70	0	0	0	0	839	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - panel data invalid	1	1	1	0	0	70	0	0	0	0	841	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - to panel stop	1	1	1	0	0	70	0	0	0	0	842	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - to panel start	1	1	1	0	0	70	0	0	0	0	843	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Failed to send	1	1	1	0	0	50	0	0	1	0	844	35	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Failed to retrieve	1	1	1	0	0	50	0	0	1	0	848	35	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - error	1	1	1	0	0	50	0	0	1	0	845	51	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - panel not connected	1	1	1	1	0	50	0	0	1	0	846	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - state	1	1	1	0	0	50	811	0	1	0	847	51	0	0	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - buffer full	1	1	1	0	0	60	0	0	0	0	849	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - path fail	1	1	1	1	0	50	90	0	1	0	89	1	0	1	1	0	EF1111	16	59	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	Comms - path restored	1	1	1	2	0	50	0	0	0	0	90	1	0	1	0	0		16	5a	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	Expander - comms fault	1	1	1	1	0	50	92	0	1	0	91	2	0	0	1	0	EF1111	24	5b	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	Expander - comms restored	1	1	1	2	0	50	0	0	0	0	92	2	0	0	0	0		24	5c	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	Expander - hardware fail	1	1	1	1	0	50	94	0	1	0	93	2	0	0	1	0	EF1111	24	5d	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	Expander - hardware restored	1	1	1	2	0	50	0	0	0	0	94	2	0	0	0	0		24	5e	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	User database - full	1	1	1	1	0	50	96	0	1	0	95	41	0	0	1	0	EF1111	10	5f	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User database - full restored	1	1	1	2	0	50	0	0	0	0	96	41	0	0	0	0		10	60	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User database - defaulted	1	1	1	0	0	50	0	0	0	0	105	2	0	0	0	0		24	69	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	User database - corrupted	1	1	1	0	0	50	0	0	0	0	106	2	0	0	0	0		24	6a	0	0	0	0	0	1	1	0	0	0	0	0	0	0	0	0	0
+	Battery missing alarm	1	1	1	1	0	50	259	0	1	0	249	41	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery missing restored	1	1	1	2	0	50	0	0	0	0	259	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Line Activity Event Category										0																											
+	Modem - dial in call	1	1	1	0	0	80	0	0	0	0	200	41	0	0	0	0		9	c8	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - dial for service	1	1	1	0	0	80	0	0	0	0	201	41	0	0	0	0		9	c9	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - dial back triggered	1	1	1	0	0	80	0	0	0	0	202	41	0	0	0	0		9	ca	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Line down	1	1	1	1	0	50	277	0	1	0	276	41	0	0	1	0	EF1111	9	ff	15	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Line up	1	1	1	2	0	50	0	0	0	0	277	41	0	0	0	0		9	ff	16	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - network down	1	1	1	1	0	50	0	0	1	0	278	41	0	0	0	0	EF1111	9	ff	17	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - line fault monitor fail	1	1	1	1	0	50	289	0	1	0	288	41	0	0	1	0	EF1111	9	ff	21	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - line fault monitor restored	1	1	1	2	0	50	0	0	0	0	289	41	0	0	0	0		9	ff	22	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - remote dial-in	1	1	1	0	0	50		0	0	0	290	1	0	0	1	0		9	ff	23	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Computer connected	1	1	1	0	0	50	0	0	0	0	291	1	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - direct connect (J15)	1	1	1	0	0	50	293	0	0	0	292	1	0	0	1	0		9	ff	25	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Activated remote direct disconnect	1	1	1	2	0	50	0	0	0	0	293	1	0	0	0	0		9	ff	26	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Special Event Category					0					0																											
+	Guard has not responded	1	1	1	1	0	10	0	0	1	0	261	41	0	0	0	0	EF1111	10	ff	6	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access test started	1	1	1	0	0	80	265	0	0	0	264	41	0	0	1	0		10	ff	9	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access test over	1	1	1	2	0	80	0	0	0	0	265	41	0	0	0	0		10	ff	0a	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access test failed	1	1	1	0	0	80	267	0	0	0	266	41	0	0	1	0		10	ff	0b	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access test completed	1	1	1	2	0	80	0	0	0	0	267	41	0	0	0	0		10	ff	0c	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Secure test started	1	1	1	0	0	80	269	0	0	0	268	41	0	0	1	0		10	ff	0d	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Secure test over	1	1	1	2	0	80	0	0	0	0	269	41	0	0	0	0		10	ff	0e	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Secure test failed	1	1	1	0	0	80	271	0	0	0	270	41	0	0	1	0		10	ff	0f	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Secure test completed	1	1	1	2	0	80	0	0	0	0	271	41	0	0	0	0		10	ff	10	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Automatic reset	1	1	1	0	0	80	0	0	0	0	279	41	0	0	0	0		10	ff	18	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Time changed	1	1	1	0	0	80	0	0	0	0	280	41	0	0	0	0		10	ff	19	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Time change extended	1	1	1	0	0	80	0	0	0	0	285	1	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Auto test call	1	1	1	0	0	80	0	0	0	0	281	4	0	0	0	0		32	ff	1a	0	0	4	2	2	1	0	0	0	0	0	0	0	0	0	0
+	Remote dial back triggered	1	1	1	0	0	80	0	0	0	0	282	41	0	0	0	0		10	ff	1b	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Service in	1	1	1	0	0	80	284	0	0	0	283	41	0	0	1	0		10	ff	1c	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Service out	1	1	1	2	0	80	0	0	0	0	284	41	0	0	0	0		10	ff	1d	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Service requested	1	1	1	0	0	80	0	0	0	0	287	41	0	0	0	0		10	ff	20	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Program mode entered	1	1	1	0	0	80	0	0	0	0	294	41	0	0	0	0		23	ff	27	2	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Program mode exited	1	1	1	0	0	80	0	0	0	0	295	41	0	0	0	0		23	ff	28	2	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Cancel code	1	1	1	0	0	80	0	0	0	0	297	41	0	0	0	0		10	ff	2a	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio unit fail	1	1	1	1	0	60	299	0	1	0	298	41	0	0	1	0	EF1111	10	ff	2b	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio unit restored	1	1	1	2	0	60	0	0	0	0	299	41	0	0	0	0		10	ff	2c	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio host fail	1	1	1	1	0	60	301	0	1	0	300	41	0	0	1	0	EF1111	10	ff	2d	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio host restored	1	1	1	2	0	60	0	0	0	0	301	41	0	0	0	0		10	ff	2e	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio ACK fail	1	1	1	1	0	60	303	0	1	0	302	41	0	0	1	0	EF1111	10	ff	2f	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio ACK restore	1	1	1	2	0	60	0	0	0	0	303	41	0	0	0	0		10	ff	30	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio out of range	1	1	1	1	0	60	305	0	1	0	304	41	0	0	1	0	EF1111	10	ff	31	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio in range	1	1	1	2	0	60	0	0	0	0	305	41	0	0	0	0		10	ff	32	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Monitoring company command	1	1	1	1	0	60	307	0	0	0	306	41	0	0	0	0	EF1111	10	ff	33	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Monitoring company command restored	1	1	1	2	0	60	0	0	0	0	307	41	0	0	0	0		10	ff	34	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	ECRC alarm	1	1	1	1	0	60	309	0	0	0	308	41	0	0	0	0	EF1111	10	ff	35	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	ECRC restore	1	1	1	2	0	60	0	0	0	0	309	41	0	0	0	0		10	ff	36	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Dial test message	1	1	1	1	0	60	311	0	0	0	310	41	0	0	0	0	EF1111	10	ff	37	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Dial test message restore	1	1	1	2	0	60	0	0	0	0	311	41	0	0	0	0		10	ff	38	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Dial backup message	1	1	1	1	0	60	313	0	0	0	312	41	0	0	0	0	EF1111	10	ff	F11	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Dial backup message restore	1	1	1	2	0	60	0	0	0	0	313	41	0	0	0	0		10	ff	3a	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet link fail	1	1	1	1	0	50	316	0	1	0	315	2	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet link restored	1	1	1	2	0	50	0	0	0	0	316	2	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet heartbeat fail	1	1	1	1	0	50	318	0	1	0	317	1	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet heartbeat restored	1	1	1	2	0	50	0	0	0	0	318	1	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet CID site fail	1	1	1	1	0	50	320	0	1	0	319	1	0	0	1	0	EF1111	10	ff	40	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet CID site restore	1	1	1	2	0	50	0	0	0	0	320	1	0	0	0	0		10	ff	41	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet hardware init fail	1	1	1	1	0	50	322	0	1	0	321	41	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet hardware init restore	1	1	1	2	0	50	0	0	0	0	322	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Popup enabled	1	1	1	0	0	50	263	0	0	0	262	41	0	0	1	0		12	ff	7	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Popup disabled	1	1	1	2	0	50	0	0	0	0	263	41	0	0	0	0		12	ff	8	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Panel - configuration restored	1	1	1	2	0	60	0	0	0	0	250	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Auto test call failed	1	1	1	2	0	60	0	0	0	0	251	1	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Radio signal strength	1	1	1	0	0	50	0	0	0	0	252	51	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Firmware upgrade started	1	1	1	0	0	50	0	0	0	0	253	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Firmware upgrade complete	1	1	1	0	0	50	0	0	0	0	254	51	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	NAC DIP switch changed	1	1	1	0	0	50	0	0	0	0	343	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - path event reset	1	1	1	2	0	50	0	0	0	0	344	1	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Service required	1	1	1	2	0	50	0	0	0	0	345	51	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Power supply shutdown	1	1	1	2	0	50	347	0	0	0	346	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Power supply shutdown restored	1	1	1	2	0	50	0	0	0	0	347	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Panel Comms Event Category										0																											
+	Modem - no dial tone detected	1	1	1	0	0	60	0	0	0	0	512	1	0	0	0	0	EF1111	16	fe	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - dialing attempt failed	1	1	1	0	0	60	0	0	0	0	513	49	0	0	0	0		16	fe	1	4	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - DTMF message retransmission	1	1	1	0	0	60	0	0	0	0	514	1	0	0	0	0		16	fe	2	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - no answer	1	1	1	0	0	60	0	0	0	0	515	1	0	0	0	0		16	fe	3	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - DTMF kiss off not detected	1	1	1	0	0	60	0	0	0	0	516	1	0	0	0	0		16	fe	4	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - answer carrier not detected	1	1	1	0	0	60	0	0	0	0	517	41	0	0	0	0		16	fe	5	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - answer tone not detected	1	1	1	0	0	60	0	0	0	0	518	41	0	0	0	0		16	fe	6	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - carrier fail	1	1	1	0	0	60	0	0	0	0	519	41	0	0	0	0		16	fe	7	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - originate carrier not detected	1	1	1	0	0	60	0	0	0	0	520	41	0	0	0	0		16	fe	8	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Modem - early disconnect	1	1	1	1	0	50	0	0	1	0	521	41	0	0	0	0	EF1111	9	fe	9	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - too many event retries	1	1	1	1	0	50	0	0	1	0	522	1	0	0	0	0	EF1111	16	fe	0a	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Panel comms line lost	1	1	1	1	0	40	1090	0	1	0	1089	41	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel comms line found	1	1	1	2	0	40	0	0	0	0	1090	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Panel Other Event Category										0																											
+	Record added	1	1	1	0	0	60	0	0	0	0	710	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Record modified	1	1	1	0	0	60	0	0	0	0	711	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Record deleted	1	1	1	0	0	60	0	0	0	0	712	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Skipped	Retrive programming started	1	1	1	0	0	60	716	0	0	0	714	41	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Skipped	Retrive programming in progress	1	0	1	0	0	60	716	0	0	0	715	3	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Skipped	Retrive programming complete	1	1	1	0	0	60	0	0	0	0	716	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Process command queue started	1	1	1	0	0	60	719	0	0	0	717	41	0	0	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Processing command queue	1	0	0	0	0	60	719	0	0	0	718	35	0	0	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Process command queue complete	1	1	1	0	0	60	0	0	0	0	719	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Comms - auto enrolled	1	1	1	0	0	60	0	0	0	0	720	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel - firmware upgrade initiate	1	1	1	0	0	60	723	0	0	0	721	51	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel - send firmware - in progress	1	1	1	0	0	60	723	0	0	0	722	3	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel - validating firmware file	1	1	1	0	0	60	0	0	0	0	738	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel - upgrade task complete	1	1	1	0	0	60	0	0	0	0	723	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel - firmware upgrade fail	1	1	1	0	0	60	0	0	0	0	726	51	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Disabled	1	1	1	0	0	60	725	0	0	0	724	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Enabled	1	1	1	2	0	60	0	0	0	0	725	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Door group over 80% limit	1	1	1	1	0	60	0	0	1	0	727	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Door group max limit reached	1	1	1	1	0	50	0	0	1	0	728	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Floor group over 80% limit	1	1	1	1	0	60	0	0	1	0	729	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Floor group max limit reached	1	1	1	1	0	50	0	0	1	0	730	41	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expander - firmware upgrade initiate	1	1	1	0	0	60	733	0	0	0	731	51	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Expander - send firmware - in progress	1	1	1	0	0	60	733	0	0	0	732	3	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Expander - validating firmware file	1	1	1	0	0	60	0	0	0	0	739	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Expander - upgrade task complete	1	1	1	0	0	60	733	0	0	0	740	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Expander - firmware upgrade fail	1	1	1	0	0	60	0	0	0	0	734	51	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Expander - firmware upgrade complete	1	1	1	0	0	60	0	0	0	0	733	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	UltraSync - successfully authenticated	1	1	1	0	0	60	0	0	0	0	735	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Network - successfully authenticated	1	1	1	0	0	60	0	0	0	0	736	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Connection PIN changed	1	1	1	0	0	60	0	0	0	0	737	41	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	UltraSync DuraPoll fail (reporting via SIM2)	1	1	1	0	0	60	800	0	0	0	799	2	0	0	0	0	0	32	ff	4d	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync DuraPoll restore (reporting via SIM1)	1	1	1	0	0	60	0	0	0	0	800	2	0	0	0	0		32	ff	4e	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync event	1	1	1	0	0	60	0	0	0	0	802	1	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Radio event	1	1	1	0	0	60	0	0	0	0	803	2	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Radio PPP event	1	1	1	0	0	60	0	0	0	0	804	2	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Radio CME event	1	1	1	0	0	60	0	0	0	0	805	2	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Denial of service	1	1	1	0	0	60	851	0	0	0	850	2	0	0	0	0	0	32	ff	4f	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Denial of service restore	1	1	1	0	0	60	0	0	0	0	851	2	0	0	0	0		32	ff	50	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync SIM2 link fail	1	1	1	0	0	60	855	0	0	0	854	2	0	0	0	0	0	32	ff	51	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync SIM2 link restore	1	1	1	0	0	60	0	0	0	0	855	2	0	0	0	0		32	ff	52	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Incorrect model configured	1	1	1	0	0	60	0	0	0	0	859	41	0	0	0	0		0	ff	53	7	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery fault	1	1	1	2	0	50	861	0	0	0	860	51	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery fault restored	1	1	1	2	0	50	0	0	0	0	861	51	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Charger fault	1	1	1	2	0	50	863	0	0	0	862	51	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Charger fault restored	1	1	1	2	0	50	0	0	0	0	863	51	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Wiegand tamper	1	1	1	2	0	50	865	0	0	0	864	51	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Wiegand tamper restored	1	1	1	2	0	50	0	0	0	0	865	51	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Apply license successful	1	1	1	0	0	50	0	0	0	0	953	41	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Apply license failed	1	1	1	0	0	50	0	0	0	0	954	51	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	License configuration mismatched	1	1	1	0	0	60	0	0	0	0	866	51	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - info	1	1	1	0	0	50	0	0	1	0	955	51	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Started updating peripherial configuration	1	1	1	0	0	70	869	0	0	0	868	41	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Finished configuring peripherial	1	1	1	2	0	70	0	0	0	0	869	41	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Region Event Category										0																											
+	Too few HSU in region alarm	15	1	1	1	0	40	244	0	1	0	243	67	0	1	1	0	EF1111	14	f3	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Too few HSU in region restore	15	1	1	2	0	40	0	0	0	0	244	67	0	1	0	0		14	f4	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	All users released from region	15	1	1	0	0	80	0	0	0	0	245	67	0	1	0	0		14	f5	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Area Event Category										0																											
+	Secured	2	1	1	2	0	80	0	0	0	0	11	13	0	1	2	0		7	0b	0	303	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Accessed	2	1	1	0	0	80	11	0	0	0	12	13	0	1	2	0		7	0c	0	303	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Area out of time zone	2	1	1	1	0	80	58	0	1	0	57	38	0	1	1	0	EF1111	7	39	0	303	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Area within time zone	2	1	1	2	0	80	0	0	0	0	58	38	0	1	0	0		7	3a	0	303	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Secured stay	2	1	1	2	0	80	0	0	0	0	110	13	0	1	2	0		7	6c	0	303	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Control failed	2	1	1	0	0	80	0	0	0	0	273	65	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Input Event Category										0																											
+	Alarm	3	1	1	1	0	50	2	1	1	0	0	31	0	1	1	1	EF1111	1	0	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Tamper	3	1	1	1	0	50	3	1	1	0	1	31	0	1	1	1	EF1111	1	1	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Alarm restored	3	1	1	2	0	50	0	0	0	0	2	31	0	1	0	0		1	2	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Tamper restored	3	1	1	2	0	50	0	0	0	0	3	31	0	1	0	0		1	3	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Secure alarm	3	1	1	1	0	50	5	1	1	0	4	31	0	1	1	0	EF1111	1	4	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Secure alarm restored	3	1	1	2	0	50	0	0	0	0	5	31	0	1	0	0		1	5	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Isolated	3	1	1	0	0	80	7	0	0	0	6	33	0	1	3	0		1	6	0	101	2	404	2	3	1	0	0	0	0	0	0	0	0	0	0
+	De-isolated	3	1	1	2	0	80	0	0	0	0	7	33	0	1	2	0		1	7	0	101	2	404	2	3	1	0	0	0	0	0	0	0	0	0	0
+	Unsealed	3	1	1	0	0	80	151	0	0	0	150	32	0	1	1	0		1	96	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Sealed	3	1	1	2	0	80	0	0	0	0	151	32	0	1	0	0		1	97	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Local alarm	3	1	1	1	0	60	195	1	1	0	194	31	0	1	1	0	EF1111	1	c2	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Local alarm reset	3	1	1	2	0	60	0	0	0	0	195	31	0	1	0	0		1	c3	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Delay started	3	1	1	0	0	80	0	0	0	0	196	31	0	0	0	0		1	c4	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Suspicion button active	3	1	1	1	0	60	0	0	1	0	199	31	0	0	0	0	EF1111	1	c7	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Courier in	3	1	1	0	0	70	0	0	0	0	260	34	0	0	0	0		1	ff	5	202	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Delay button active	3	1	1	0	0	60	0	0	0	0	275	32	0	0	0	0		1	ff	14	202	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Smoke detector dirty	3	1	1	1	0	50	70	0	1	0	69	32	0	1	1	0	EF1111	1	45	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Smoke detector dirty restored	3	1	1	2	0	50	0	0	0	0	70	32	0	1	0	0		1	46	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Supervision fail	3	1	1	1	0	50	72	0	1	0	71	32	0	1	1	0	EF1111	1	47	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Supervision fail restored	3	1	1	2	0	50	0	0	0	0	72	32	0	1	0	0		1	48	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Detector low battery (Wireless)	3	1	1	1	0	50	74	0	1	0	73	32	0	1	1	0	EF1111	1	49	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Detector low battery restored (Wireless)	3	1	1	2	0	50	0	0	0	0	74	32	0	1	0	0		1	4a	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Fail test	3	1	1	1	0	50	102	0	1	0	101	31	0	1	1	0	EF1111	1	65	0	1	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Fail test reset	3	1	1	2	0	50	0	0	0	0	102	31	0	1	0	0		1	66	0	1	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Exit alarm	3	1	1	1	0	50	104	0	1	0	103	31	0	1	1	0	EF1111	1	67	0	1	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Exit alarm restored	3	1	1	2	0	50	0	0	0	0	104	31	0	1	0	0		1	68	0	1	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Input test successful	3	1	1	2	0	50	0	0	0	0	107	31	0	1	0	0		1	6b	0	1	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Multi-break alarm	3	1	1	1	0	50	88	1	1	0	87	31	0	1	1	1	EF1111	1	57	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Multi-break alarm restored	3	1	1	2	0	50	0	1	1	0	88	31	0	1	1	1		1	58	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Twin Trip timer started	3	1	1	0	0	60	0	0	0	0	215	32	0	0	0	1		1	d3	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Night holdup	3	0	0	1	0	50	2	1	1	0	216	31	0	1	1	1	EF1111	0	0	0	101	2	0	0	3	1	0	0	0	0	0	0	0	0	0	0
+	Short state	3	0	0	0	0	60	0	0	0	0	217	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Open state	3	0	0	0	0	60	0	0	0	0	218	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Active state	3	0	0	0	0	60	0	0	0	0	219	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Sealed state	3	0	0	0	0	60	0	0	0	0	220	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Untested	3	0	0	0	0	60	0	0	0	0	10016	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Test successful	3	0	0	0	0	60	0	0	0	0	10017	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Test fail	3	0	0	0	0	60	0	0	0	0	10018	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Test unconfigured	3	0	0	0	0	60	0	0	0	0	10019	32	0	1	0	1		0	0	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+DGP Event Category										0																											
+	Offline	4	1	1	1	0	60	16	0	1	0	15	21	0	1	0	0	EF1111	2	0f	0	301	1	0	0	2	1	7	1	0	0	0	0	0	0	0	0
+	Online	4	1	1	2	0	60	0	0	0	0	16	21	0	1	0	0		2	10	0	301	1	0	0	2	1	7	1	0	0	0	0	0	0	0	0
+	Mains fail	4	1	1	1	0	60	20	0	1	0	19	21	0	1	1	0	EF1111	2	13	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Mains restored	4	1	1	2	0	60	0	0	0	0	20	21	0	1	0	0		2	14	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery low	4	1	1	1	0	60	22	0	1	0	21	21	0	1	1	0	EF1111	2	15	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery low restored	4	1	1	2	0	60	0	0	0	0	22	21	0	1	0	0		2	16	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Fuse fail	4	1	1	1	0	60	24	0	1	0	23	21	0	1	1	0	EF1111	2	17	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Fuse restored	4	1	1	2	0	60	0	0	0	0	24	21	0	1	0	0		2	18	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Siren monitor fail	4	1	1	1	0	50	26	0	1	0	25	21	0	1	1	0	EF1111	2	19	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Siren monitor restored	4	1	1	2	0	50	0	0	0	0	26	21	0	1	0	0		2	1a	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Tamper	4	1	1	1	0	60	28	0	1	0	27	21	0	1	1	0	EF1111	2	1b	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Tamper restore	4	1	1	2	0	60	0	0	0	0	28	21	0	1	0	0		2	1c	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery test - start	4	1	1	0	0	70	30	0	0	0	29	21	0	1	1	0		2	1d	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery test - finish	4	1	1	2	0	70	0	0	0	0	30	21	0	1	0	0		2	1e	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery test - fail	4	1	1	1	0	70	32	0	1	0	31	21	0	1	1	0	EF1111	2	1f	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery test - restored	4	1	1	2	0	70	0	0	0	0	32	21	0	1	0	0		2	20	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	CPU restart	4	1	1	0	0	70	0	0	0	0	33	21	0	0	0	0		2	21	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Encryption reset	4	1	1	0	0	70	0	0	0	0	35	21	0	0	0	0		2	23	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	DIP switch changed	4	1	1	1	0	70	0	0	1	0	37	21	0	0	0	0	EF1111	2	25	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	De-polled	4	1	1	0	0	70	40	0	0	0	39	22	0	1	2	0		2	27	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	Polled	4	1	1	2	0	70	0	0	0	0	40	22	0	1	2	0		2	28	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	Isolated	4	1	1	0	0	70	42	0	0	0	41	22	0	1	3	0		2	29	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	De-isolated	4	1	1	2	0	70	0	0	0	0	42	22	0	1	2	0		2	2a	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	User - duress (Wireless)	4	1	1	1	0	10	64	0	1	0	63	22	0	0	3	0	EF1111	2	3f	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	User - duress restored (Wireless)	4	1	1	2	0	10	0	0	0	0	64	22	0	0	2	0		2	40	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	User - tamper	4	1	1	1	0	50	66	0	1	0	65	22	0	0	3	0	EF1111	2	41	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	User - tamper restored	4	1	1	2	0	50	0	0	0	0	66	22	0	0	2	0		2	42	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	User - battery low	4	1	1	1	0	50	68	0	1	0	67	22	0	0	3	0	EF1111	2	43	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	User - battery low restored	4	1	1	2	0	50	0	0	0	0	68	22	0	0	2	0		2	44	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - offline	4	1	1	1	0	50	177	0	1	0	176	21	0	0	1	0	EF1111	2	b0	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - online	4	1	1	2	0	50	0	0	0	0	177	21	0	0	0	0		2	b1	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RF jammed	4	1	1	1	0	50	86	0	1	0	85	21	0	0	1	0	EF1111	2	55	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RF jam restored	4	1	1	2	0	50	0	0	0	0	86	21	0	0	0	0		2	56	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - low battery restore	4	1	1	2	0	50	0	0	0	0	180	21	0	0	0	0		2	b4	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - low battery	4	1	1	1	0	50	180	0	1	0	181	21	0	0	1	0	EF1111	2	b5	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - tamper restore	4	1	1	2	0	50	0	0	0	0	182	21	0	0	0	0		2	b6	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - tamper	4	1	1	1	0	50	182	0	1	0	183	21	0	0	1	0	EF1111	2	b7	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - fuse fail restored	4	1	1	2	0	50	0	0	0	0	184	21	0	0	0	0		2	b8	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - fuse fail	4	1	1	1	0	50	184	0	1	0	185	21	0	0	1	0	EF1111	2	b9	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - mains fail restored	4	1	1	2	0	50	0	0	0	0	186	21	0	0	0	0		2	ba	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	HLL - mains fail	4	1	1	1	0	50	186	0	1	0	187	21	0	0	1	0	EF1111	2	bb	0	301	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Firmware upgrade initiate	4	1	1	0	0	60	743	0	0	0	741	21	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Send firmware - in progress	4	1	1	0	0	60	743	0	0	0	742	23	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Validating firmware file	4	1	1	0	0	60	0	0	0	0	792	21	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Upgrade task complete	4	1	1	0	0	60	0	0	0	0	743	21	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Firmware upgrade fail	4	1	1	0	0	60	0	0	0	0	744	61	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Status update	4	1	0	0	0	60	0	0	0	0	745	21	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Auto test call	4	1	1	0	0	80	0	0	0	0	746	21	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Computer connected	4	1	1	0	0	50	0	0	0	0	747	54	0	0	0	0		32	ff	24	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet link fail	4	1	1	1	0	50	749	0	1	0	748	64	0	0	1	0	EF1111	28	ff	3c	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet link restored	4	1	1	2	0	50	0	0	0	0	749	64	0	0	0	0		28	ff	3d	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet heartbeat fail	4	1	1	1	0	50	751	0	1	0	750	69	0	0	1	0	EF1111	32	ff	3e	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet heartbeat restored	4	1	1	2	0	50	0	0	0	0	751	69	0	0	0	0		32	ff	3f	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet hardware init fail	4	1	1	1	0	50	753	0	1	0	752	21	0	0	1	0	EF1111	27	ff	42	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet hardware init restore	4	1	1	2	0	50	0	0	0	0	753	21	0	0	0	0		27	ff	43	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Configuration restored	4	1	1	2	0	60	0	0	0	0	767	21	0	0	0	0		10	ff	45	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Auto test call failed	4	1	1	1	0	60	0	0	0	0	768	69	0	0	0	0		32	ff	44	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Radio signal strength	4	1	1	0	0	50	0	0	0	0	769	51	0	0	0	0		24	ff	48	0	0	0	0	2	1	3	3	0	0	0	0	0	0	0	0
+	Firmware upgrade started	4	1	1	0	0	50	0	0	0	0	754	21	0	0	0	0		27	ff	46	7	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Firmware upgrade complete	4	1	1	0	0	50	0	0	0	0	755	61	0	0	0	0		27	ff	47	7	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - path fail	4	1	1	1	0	50	90	0	1	0	756	69	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - path restored	4	1	1	2	0	50	0	0	0	0	757	69	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expander - comms fault	4	1	1	1	0	50	759	0	1	0	758	64	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expander - comms restored	4	1	1	2	0	50	0	0	0	0	759	64	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expander - hardware fail	4	1	1	1	0	50	94	0	1	0	760	64	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expander - hardware restored	4	1	1	2	0	50	0	0	0	0	761	64	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User database - full	4	1	1	1	0	50	763	0	1	0	762	21	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User database - full restored	4	1	1	2	0	50	0	0	0	0	763	21	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User database - defaulted	4	1	1	0	0	50	0	0	0	0	764	64	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User database - corrupted	4	1	1	0	0	50	0	0	0	0	765	64	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Time changed	4	1	1	0	0	80	0	0	0	0	766	54	0	0	0	0		30	f2	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery missing alarm	4	1	1	1	0	50	795	0	1	0	794	21	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery missing restored	4	1	1	2	0	50	0	0	0	0	795	21	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Migrate to NAC started	4	1	1	0	0	50	0	0	0	0	828	21	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Migrate to NAC complete	4	1	1	0	0	50	0	0	0	0	829	21	0	0	0	0		0	0	0	0	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Migrate to NAC failed	4	1	1	0	0	50	0	0	0	0	830	21	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Apply license successful	4	1	1	0	0	50	0	0	0	0	951	21	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Apply license failed	4	1	1	0	0	50	0	0	0	0	952	61	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+DGP Events Not currently supported by Panel																																					
+	Modem - no dial tone detected	4	1	1	0	0	60	0	0	0	0	778	69	0	0	0	0	EF1111	0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - dialing attempt failed	4	1	1	0	0	60	0	0	0	0	779	69	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - DTMF message retransmission	4	1	1	0	0	60	0	0	0	0	780	69	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - no answer	4	1	1	0	0	60	0	0	0	0	781	69	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - DTMF kiss off not detected	4	1	1	0	0	60	0	0	0	0	782	69	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - too many event retries	4	1	1	1	0	50	0	0	1	0	783	69	0	0	0	0	EF1111	0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Modem - remote dial-in	4	1	1	0	0	50		0	0	0	784	69	0	0	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - direct connect (J15)	4	1	1	0	0	50	786	0	0	0	785	69	0	0	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Activated remote direct disconnect	4	1	1	2	0	50	0	0	0	0	786	69	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet CID site fail	4	1	1	1	0	50	788	0	1	0	787	69	0	0	1	0	EF1111	0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - Ethernet CID site restore	4	1	1	2	0	50	0	0	0	0	788	69	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Comms - path event reset	4	1	1	1	0	60	0	0	0	0	789	69	0	0	0	0		32	ff	44	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Service required	4	1	1	1	0	60	0	0	0	0	790	61	0	0	0	0		32	ff	44	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Power supply shutdown	4	1	1	1	0	60	793	0	0	0	791	21	0	0	0	0	EF1111	32	ff	4b	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Power supply shutdown restored	4	1	1	1	0	60	0	0	0	0	793	21	0	0	0	0		32	ff	4c	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync DuraPoll fail (reporting via SIM2)	4	1	1	1	0	60	793	0	0	0	797	64	0	0	0	0	0	32	ff	4d	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync DuraPoll restore (reporting via SIM1)	4	1	1	1	0	60	0	0	0	0	798	64	0	0	0	0		32	ff	4e	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync event	4	1	1	0	0	60	0	0	0	0	801	69	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync radio event	4	1	1	0	0	60	0	0	0	0	806	64	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync radio PPP event	4	1	1	0	0	60	0	0	0	0	807	64	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync radio CME event	4	1	1	0	0	60	0	0	0	0	808	64	0	0	0	0		0	0	0	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Denial of service	4	1	1	1	0	60	853	0	0	0	852	64	0	0	0	0	0	32	ff	4f	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Denial of service restore	4	1	1	1	0	60	0	0	0	0	853	64	0	0	0	0		32	ff	50	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync SIM2 link fail	4	1	1	1	0	60	857	0	0	0	856	64	0	0	0	0	0	32	ff	51	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	UltraSync SIM2 link restore	4	1	1	1	0	60	0	0	0	0	857	64	0	0	0	0		32	ff	52	0	0	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Incorrect model configured	4	1	1	0	0	60	0	0	0	0	858	21	0	0	0	0		0	ff	53	7	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery fault	4	1	1	2	0	50	363	0	0	0	362	61	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Battery fault restored	4	1	1	2	0	50	0	0	0	0	363	61	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Charger fault	4	1	1	2	0	50	365	0	0	0	364	61	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Charger fault restored	4	1	1	2	0	50	0	0	0	0	365	61	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Wiegand tamper	4	1	1	2	0	50	367	0	0	0	366	61	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Wiegand tamper restored	4	1	1	2	0	50	0	0	0	0	367	61	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	License configuration mismatched	4	1	1	0	0	60	0	0	0	0	867	61	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Started updating peripherial configuration	4	1	1	0	0	70	369	0	0	0	368	21	0	1	1	0		2	1d	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Finished configuring peripherial	4	1	1	2	0	70	0	0	0	0	369	21	0	1	0	0		2	1e	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+RAS Event Category										0																											
+	PIN entered	5	1	1	0	0	60	0	0	0	0	8	25	0	0	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Duress entered	5	1	1	1	0	10	0	0	1	0	9	25	0	1	3	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Duress restored	5	1	1	2	0	10	0	0	0	0	10	25	0	1	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Offline	5	1	1	1	0	60	14	0	1	0	13	24	0	1	0	0	EF1111	3	0d	0	301	1	0	0	2	1	7	1	0	0	0	0	0	0	0	0
+	Online	5	1	1	2	0	60	0	0	0	0	14	24	0	1	0	0		3	0e	0	301	1	0	0	2	1	7	1	0	0	0	0	0	0	0	0
+	Tamper	5	1	1	1	0	50	44	0	1	0	43	24	0	1	1	0	EF1111	3	2b	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Tamper restored	5	1	1	2	0	50	0	0	0	0	44	24	0	1	0	0		3	2c	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Code attempts fail	5	1	1	0	0	70	0	0	0	0	45	24	0	0	0	0		3	2d	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	CPU restart	5	1	1	0	0	70	0	0	0	0	47	24	0	0	0	0		3	2f	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Encryption reset	5	1	1	0	0	70	0	0	0	0	49	24	0	0	0	0		3	31	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	DIP switch changed	5	1	1	0	0	70	0	0	0	0	51	24	0	0	0	0		3	33	0	301	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	De-polled	5	1	1	0	0	70	54	0	0	0	53	29	0	1	2	0		3	35	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	Polled	5	1	1	2	0	70	0	0	0	0	54	29	0	1	2	0		3	36	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	Isolated	5	1	1	0	0	70	56	0	0	0	55	29	0	1	3	0		3	37	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	De-isolated	5	1	1	2	0	70	0	0	0	0	56	29	0	1	2	0		3	38	0	301	1	404	2	2	1	0	0	0	0	0	0	0	0	0	0
+	Menu entered	5	1	1	0	0	70	193	0	0	0	192	25	0	0	2	0		3	c0	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Menu exited	5	1	1	2	0	70	0	0	0	0	193	25	0	0	2	0		3	c1	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Local alarm acknowledged	5	1	1	0	0	60	0	0	0	0	272	25	0	0	0	0		23	ff	11	202	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	User added	5	1	1	0	0	60	0	0	0	0	203	60	0	0	2	0		3	cb	0	301	1	6	2	104	2	0	0	0	0	0	0	0	0	0	0
+	User deleted	5	1	1	0	0	60	0	0	0	0	204	60	0	0	2	0		3	cc	0	301	1	6	2	104	2	0	0	0	0	0	0	0	0	0	0
+	Door group added	5	1	1	0	0	60	0	0	0	0	205	42	0	0	2	0		3	cd	0	301	1	6	2	104	2	0	0	0	0	0	0	0	0	0	0
+	Floor group added	5	1	1	0	0	60	0	0	0	0	206	43	0	0	2	0		3	ce	0	301	1	6	2	104	2	0	0	0	0	0	0	0	0	0	0
+	Holiday added	5	1	1	0	0	60	0	0	0	0	207	44	0	0	2	0		3	cf	0	301	1	6	2	104	2	0	0	0	0	0	0	0	0	0	0
+	Time zone added	5	1	1	0	0	60	0	0	0	0	208	45	0	0	2	0		3	d0	0	301	1	6	2	104	2	0	0	1	1	2	0	0	0	0	0
+	Area search - incomplete	5	1	1	1	0	60	0	0	1	0	97	24	0	1	1	0	EF1111	3	61	0	1	1	0	0	4	2	0	0	0	0	0	0	0	0	0	0
+	Area search - incomplete restored	5	1	1	2	0	60	0	0	0	0	98	24	0	1	0	0		3	62	0	1	1	0	0	4	2	0	0	0	0	0	0	0	0	0	0
+	Area search - fail	5	1	1	1	0	60	100	0	1	0	99	24	0	1	1	0	EF1111	3	63	0	1	1	0	0	4	2	0	0	0	0	0	0	0	0	0	0
+	Area search - fail restored	5	1	1	2	0	60	0	0	0	0	100	24	0	1	0	0		3	64	0	1	1	0	0	4	2	0	0	0	0	0	0	0	0	0	0
+	Battery fail	5	1	1	1	0	70	401	0	1	0	400	24	0	1	1	0	EF1111	3	e7	0	2	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery fail restored	5	1	1	2	0	70	0	0	0	0	401	24	0	1	0	0		3	e8	0	2	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery low	5	1	1	1	0	60	403	0	1	0	402	24	0	1	1	0	EF1111	3	e9	0	2	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Battery low restored	5	1	1	2	0	60	0	0	0	0	403	24	0	1	0	0		3	ea	0	2	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Mains fail	5	1	1	1	0	60	405	0	1	0	404	24	0	1	1	0	EF1111	3	eb	0	2	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Mains restored	5	1	1	2	0	60	0	0	0	0	405	24	0	1	0	0		3	ec	0	2	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Program mode entered	5	1	1	0	0	70	407	0	0	0	406	25	0	0	0	0		0	0	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Program mode exited	5	1	1	2	0	70	0	0	0	0	407	25	0	0	0	0		0	0	0	301	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+RAS Access Event Category										0																											
+	Access denied - out of time zone	5	1	1	0	0	80	0	0	0	0	663	25	0	0	2	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access granted	5	1	1	0	0	80	0	0	0	0	668	25	0	1	2	0	8000	0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Inactive card badged	5	1	1	1	0	50	0	0	1	0	678	26	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Void card badged	5	1	1	1	0	50	0	0	1	0	679	26	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Lost card badged	5	1	1	1	0	50	0	0	1	0	680	26	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expired card badged	5	1	1	1	0	50	0	0	1	0	681	26	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - Unknown card	5	1	1	0	0	60	0	0	0	0	682	27	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Firmware upgrade initiate	5	1	1	0	0	60	686	0	0	0	684	24	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Send firmware - in progress	5	1	1	0	0	60	686	0	0	0	685	28	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Validating firmware file	5	1	1	0	0	60	0	0	0	0	704	24	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Upgrade task complete	5	1	1	0	0	60	0	0	0	0	686	24	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Firmware upgrade fail	5	1	1	0	0	60	0	0	0	0	687	27	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Access denied - void	5	1	1	0	0	80	0	0	0	0	688	25	0	0	2	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Status update	5	1	0	0	0	60	0	0	0	0	689	24	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Access denied - no area control	5	1	1	0	0	80	0	0	0	0	690	25	0	0	2	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - PIN not entered	5	1	1	0	0	80	0	0	0	0	691	25	0	0	2	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - PIN before card	5	1	1	0	0	80	0	0	0	0	692	25	0	0	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - dual custody timeout	5	1	1	0	0	80	0	0	0	0	693	25	0	0	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - alarm control invalid TZ	5	1	1	0	0	80	0	0	0	0	694	25	0	0	2	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Timed unlock	5	1	1	0	0	80	696	0	0	0	695	24	0	1	1	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Timed lock	5	1	1	2	0	80	0	0	0	0	696	24	0	1	0	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - not in group	5	1	1	0	0	80	0	0	0	0	697	25	0	0	2	0		0	0	0	0	0	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - invalid PIN	5	1	1	0	0	80	0	0	0	0	698	24	0	0	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - invalid Card/PIN	5	1	1	0	0	80	0	0	0	0	699	24	0	0	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Fault	5	1	1	1	0	40	701	1	1	0	700	66	0	1	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Fault restored	5	1	1	2	0	40	0	0	0	0	701	66	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Disabled	5	1	1	0	0	50	703	0	0	0	702	66	0	1	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Enabled	5	1	1	0	0	50	0	0	0	0	703	66	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Door Event Category										0																											
+	Unlocked	6	1	1	0	0	80	135	0	0	0	134	39	0	1	1	0		4	86	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Locked	6	1	1	2	0	80	0	0	0	0	135	39	0	1	0	0		4	87	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Auto unLocked	6	1	1	0	0	80	137	0	0	0	136	17	0	1	1	0		4	88	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Auto locked	6	1	1	2	0	80	0	0	0	0	137	17	0	1	0	0		4	89	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Disabled	6	1	1	0	0	50	161	0	0	0	160	39	0	1	3	0		4	a0	0	101	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Enabled	6	1	1	0	0	50	0	0	0	0	161	39	0	1	2	0		4	a1	0	101	1	404	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Trace user	6	1	1	1	0	10	0	0	1	0	163	14	0	0	0	0	EF1111	14	a3	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Open	6	1	1	0	0	50	166	0	0	0	165	17	0	1	1	0		4	a5	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Closed	6	1	1	2	0	50	0	0	0	0	166	17	0	1	0	0		4	a6	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Forced	6	1	1	1	0	40	168	1	1	0	167	17	0	1	1	0	EF1111	4	a7	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Forced restored	6	1	1	2	0	40	0	0	0	0	168	17	0	1	0	0		4	a8	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Open too long	6	1	1	1	0	40	170	1	1	0	169	17	0	1	1	0	EF1111	4	a9	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Open too long restored	6	1	1	2	0	40	0	0	0	0	170	17	0	1	0	0		4	aa	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Unsecured	6	1	1	0	0	40	175	0	1	0	174	17	0	1	1	0		4	ae	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Secured	6	1	1	2	0	40	0	0	0	0	175	17	0	1	0	0		4	af	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Timed anti-passback release	6	1	1	0	0	50	0	0	0	0	178	40	0	0	2	0		14	b2	0	1	1	4	2	0	0	0	0	2	1	0	0	0	0	0	0
+	Timed anti-passback buffer full	6	1	1	1	0	40	190	0	1	0	191	17	0	1	1	0	EF1111	4	be	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Timed anti-passback buffer restored	6	1	1	2	0	40	0	0	0	0	190	17	0	1	0	0		4	bf	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Disabled door readers	6	1	1	0	0	50	189	0	0	0	188	58	0	1	1	0		14	ab	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Enabled door readers	6	1	1	0	0	50	0	0	0	0	189	58	0	1	0	0		14	ac	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS tamper	6	1	1	0	0	50	198	0	1	0	197	17	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS tamper restored	6	1	1	0	0	50	0	0	0	0	198	17	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS offline	6	1	1	0	0	50	214	0	1	0	213	17	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS online	6	1	1	0	0	50	0	0	0	0	214	17	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS CPU restart	6	1	1	0	0	70	0	0	0	0	323	17	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS encryption reset	6	1	1	0	0	70	0	0	0	0	324	17	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS DIP switch changed	6	1	1	0	0	70	0	0	0	0	325	17	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS isolated	6	1	1	0	0	70	328	0	0	0	328	17	0	0	1	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	RAS de-isolated	6	1	1	0	0	70	0	0	0	0	329	17	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	PIN entered	6	1	1	0	0	60	0	0	0	0	330	14	0	0	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Duress entered	6	1	1	1	0	10	0	0	1	0	331	14	0	1	3	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Duress restored	6	1	1	2	0	10	0	0	0	0	332	14	0	1	2	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Fault	6	1	1	1	0	40	334	1	1	0	333	17	0	1	1	0	EF1111	4	dd	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Fault restored	6	1	1	2	0	40	0	0	0	0	334	17	0	1	0	0		4	de	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Input fault	6	1	1	1	0	40	336	1	1	0	335	17	0	1	1	0	EF1111	26	e1	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Input fault restored	6	1	1	2	0	40	0	0	0	0	336	17	0	1	0	0		26	e2	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Egress input fault	6	1	1	1	0	40	338	1	1	0	337	17	0	1	1	0	EF1111	26	e3	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Egress input fault restored	6	1	1	2	0	40	0	0	0	0	338	17	0	1	0	0		26	e4	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Interlock 1 input fault	6	1	1	1	0	40	340	1	1	0	339	17	0	1	1	0	EF1111	26	e5	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Interlock 1 input fault restored	6	1	1	2	0	40	0	0	0	0	340	17	0	1	0	0		26	e6	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Reader fault	6	1	1	1	0	40	342	1	1	0	341	58	0	1	1	0	EF1111	14	ef	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Reader fault restored	6	1	1	2	0	40	0	0	0	0	342	58	0	1	0	0		14	f0	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Remote reader fault	6	1	1	1	0	40	349	1	1	0	348	68	0	1	1	0	EF1111	14	ef	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Remote reader fault restored	6	1	1	2	0	40	0	0	0	0	349	68	0	1	0	0		14	f0	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Reader disabled	6	1	1	1	0	40	351	1	1	0	350	58	0	1	1	0	EF1111	14	ab	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Reader enabled	6	1	1	2	0	40	0	0	0	0	351	58	0	1	0	0		14	ac	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Remote reader disabled	6	1	1	1	0	40	353	1	1	0	352	68	0	1	1	0	EF1111	14	ab	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Remote reader enabled	6	1	1	2	0	40	0	0	0	0	353	68	0	1	0	0		14	ac	0	1	1	0	0	7	1	0	0	0	0	0	0	0	0	0	0
+	Input 2 fault	6	1	1	1	0	40	355	1	1	0	354	17	0	1	1	0	EF1111	26	e1	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Input 2 fault restored	6	1	1	2	0	40	0	0	0	0	355	17	0	1	0	0		26	e2	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Interlock 2 input fault	6	1	1	1	0	40	357	1	1	0	356	17	0	1	1	0	EF1111	26	e5	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Interlock 2 input fault restored	6	1	1	2	0	40	0	0	0	0	357	17	0	1	0	0		26	e6	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Interlock 3 input fault	6	1	1	1	0	40	359	1	1	0	358	17	0	1	1	0	EF1111	26	e5	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Interlock 3 input fault restored	6	1	1	2	0	40	0	0	0	0	359	17	0	1	0	0		26	e6	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Isolated alarms	6	1	1	0	0	40	361	1	1	0	360	17	0	1	1	0	0	4	fb	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+	Deisolated alarms	6	1	1	2	0	40	0	0	0	0	361	17	0	1	0	0		4	fc	0	1	1	0	0	2	1	0	0	0	0	0	0	0	0	0	0
+Door Access Event Category										0																											
+	Access denied - void	6	1	1	0	0	80	0	0	0	0	139	14	0	0	2	0		14	8b	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - out of time zone	6	1	1	0	0	80	0	0	0	0	141	14	0	0	2	0		14	8d	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access granted - soft passback	6	1	1	0	0	80	0	0	0	0	142	62	0	0	2	0		14	8e	0	101	1	404	2	7	1	0	0	302	1	0	0	0	0	0	0
+	Access denied - area secure	6	1	1	0	0	80	0	0	0	0	143	14	0	0	2	0		14	8f	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - hard passback	6	1	1	0	0	80	0	0	0	0	144	62	0	0	2	0		14	90	0	101	1	404	2	7	1	0	0	302	1	0	0	0	0	0	0
+	Access denied - invalid Card/PIN	6	1	1	0	0	80	0	0	0	0	145	14	0	0	2	0		14	91	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access granted	6	1	1	0	0	80	0	0	0	0	146	14	0	1	2	0	8000	14	92	0	101	1	404	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access granted - region	6	1	1	0	0	80	0	0	0	0	147	15	0	1	2	0	8000	14	93	0	101	1	404	2	7	1	0	0	302	1	0	0	0	0	0	0
+	Access granted - IN region	6	1	1	0	0	80	0	0	0	0	148	15	0	1	2	0	8000	14	94	0	101	1	404	2	7	1	0	0	302	1	0	0	0	0	0	0
+	Access granted - OUT region	6	1	1	0	0	80	0	0	0	0	149	15	0	1	2	0	8000	14	95	0	101	1	404	2	7	1	0	0	302	1	0	0	0	0	0	0
+	Access denied - dual custody	6	1	1	0	0	80	0	0	0	0	152	14	0	0	2	0		14	98	0	101	1	404	2	7	1	0	0	2	1	0	0	0	0	0	0
+	Access granted - floor	6	1	1	0	0	80	0	0	0	0	153	47	0	1	2	0		5	99	0	302	1	404	2	7	1	101	1	0	0	0	0	0	0	0	0
+	Access denied - invalid PIN	6	1	1	0	0	80	0	0	0	0	154	58	0	0	0	0		14	9a	0	101	1	0	0		0	0	0	0	0	0	0	0	0	0	0
+	Access granted - job start	6	1	1	0	0	80	0	0	0	0	155	14	0	1	2	0	8000	14	9b	0	101	1	404	2	2	2	0	0	0	0	0	0	0	0	0	0
+	Access granted - job stop	6	1	1	0	0	80	0	0	0	0	156	14	0	1	2	0	8000	14	9c	0	101	1	404	2	2	2	0	0	0	0	0	0	0	0	0	0
+	Access granted - egress	6	1	1	0	0	80	0	0	0	0	157	17	0	1	0	0	8000	4	9d	0	101	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Inactive card badged	6	1	1	1	0	50	0	0	1	0	626	11	0	0	2	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Void card badged	6	1	1	1	0	50	0	0	1	0	627	11	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Lost card badged	6	1	1	1	0	50	0	0	1	0	628	11	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Expired card badged	6	1	1	1	0	50	0	0	1	0	629	11	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - Unknown card	6	1	1	0	0	60	0	0	0	0	75	16	0	0	0	0		17	4b	0	707	1	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Access granted - lift	6	1	1	0	0	80	0	0	0	0	630	53	0	1	2	0		25	d4	0	2	1	4	2	1	1	0	0	0	0	0	0	0	0	0	0
+Door Access NAC Event Category																																					
+	Access denied - no area control	6	1	1	0	0	80	0	0	0	0	631	56	0	0	2	0		14	d5	0	1	1	4	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - PIN not entered	6	1	1	0	0	80	0	0	0	0	632	56	0	0	2	0		14	d6	0	1	1	4	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - PIN before card	6	1	1	0	0	80	0	0	0	0	633	56	0	0	2	0		14	d7	0	1	1	4	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - dual custody timeout	6	1	1	0	0	80	0	0	0	0	634	56	0	0	2	0		14	d8	0	1	1	4	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - alarm control invalid TZ	6	1	1	0	0	80	0	0	0	0	635	56	0	0	2	0		14	d9	0	1	1	4	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Timed unlock	6	1	1	0	0	80	637	0	0	0	636	39	0	1	3	0		4	da	0	1	1	4	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Timed lock	6	1	1	2	0	80	0	0	0	0	637	39	0	1	2	0		4	db	0	1	1	4	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - floor not in group	6	1	1	0	0	80	0	0	0	0	638	59	0	0	2	0		14	dc	0	1	1	4	2	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - not in group	6	1	1	0	0	80	0	0	0	0	140	56	0	0	2	0		14	8c	0	1	1	4	2	7	1	0	0	0	0	0	0	0	0	0	0
+	Access denied - unknown card extended	6	1	1	0	0	60	0	0	0	0	237	16	0	0	0	0		31	ed	0	1	1	0	0	2	1	0	0	0	0	0	0	0	1	0	0
+	Access granted - user randomly selected	6	1	1	0	0	80	0	0	0	0	639	57	0	1	2	0		14	df	0	1	1	4	3	0	0	0	0	2	1	0	0	0	0	0	0
+	Access denied - lockout timer active	6	1	1	0	0	60	0	0	0	0	640	56	0	0	2	0		14	e0	0	1	1	4	3	1	2	0	0	0	0	0	0	0	1	0	0
+	Access denied - maximum users in region	6	1	1	0	0	80	0	0	0	0	246	15	0	1	2	0		14	f6	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - interlock active	6	1	1	0	0	80	0	0	0	0	247	14	0	0	2	0		14	f7	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Access denied - too few HSU in region	6	1	1	0	0	80	0	0	0	0	248	62	0	0	2	0		14	f8	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Floor Event Category										0																											
+	Floor auto secured	6	1	1	0	0	80	0	0	0	0	128	36	0	1	0	0		5	80	0	302	1	0	0	0	0	1	1	0	0	0	0	0	0	0	0
+	Floor auto accessed	6	1	1	0	0	80	128	0	0	0	129	36	0	1	0	0		5	81	0	302	1	0	0	0	0	1	1	0	0	0	0	0	0	0	0
+	Floor secured	6	1	1	0	0	80	0	0	0	0	130	37	0	1	2	0		5	82	0	302	1	4	2	0	0	1	1	0	0	0	0	0	0	0	0
+	Floor accessed	6	1	1	0	0	80	130	0	0	0	131	37	0	1	2	0		5	83	0	302	1	4	2	0	0	1	1	0	0	0	0	0	0	0	0
+	Floor landed	6	1	1	0	0	80	0	0	0	0	173	36	0	1	0	0		5	ad	0	302	1	0	0	0	0	1	1	0	0	0	0	0	0	0	0
+Frame Camera - Counter Event Category										0																											
+	Film low	7	1	1	1	0	80	257	0	1	0	255	48	0	1	1	0	EF1111	13	ff	0	202	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Film out	7	1	1	1	0	80	258	0	1	0	256	48	0	1	1	0	EF1111	13	ff	1	202	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Camera fault	7	1	1	2	0	80	0	0	0	0	296	48	0	1	0	0		13	ff	2	202	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Film out restored	7	1	1	2	0	80	0	0	0	0	258	48	0	1	0	0		13	ff	3	202	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Film low restored	7	1	1	2	0	80	0	0	0	0	257	48	0	1	0	0		13	ff	29	202	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Automation Event Category										0																											
+	On	8	1	1	0	0	60	210	0	0	0	209	19	0	1	0	0		22	d1	0	1	1	0	0	4	2	0	0	0	0	0	0	0	0	0	0
+	Off	8	1	1	0	0	60	0	0	0	0	210	19	0	1	0	0		22	d2	0	1	1	0	0	4	2	0	0	0	0	0	0	0	0	0	0
+	On level	8	1	1	0	0	60	210	0	0	0	211	19	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Off level	8	1	1	0	0	60	210	0	0	0	212	19	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Relay Event Category										0																											
+	Output active	9	1	1	0	0	80	133	0	0	0	132	46	0	1	0	0		8	84	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	Output normal	9	1	1	0	0	80	0	0	0	0	133	46	0	1	0	0		8	85	0	101	2	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+Client Event Category										0																											
+	Client error	10	1	1	1	0	60	0	0	1	1	770	20	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Client connected	10	1	1	1	0	60	0	0	1	1	771	20	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Client disconnected	10	1	1	1	0	60	0	0	1	1	772	20	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Client lockout	10	1	1	1	0	60	0	0	1	1	796	20	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+System Event Category										0																											
+	System event	11	1	1	0	0	60	0	0	0	0	1281	7	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Panel license exceeded	11	1	1	0	0	60	0	0	0	0	1282	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Client license exceeded	11	1	1	0	0	60	0	0	0	0	1283	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	System control connection lost	11	1	1	0	0	60	0	0	0	0	1284	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	No unacknowledge alarm	11	1	1	0	0	60	0	0	0	0	1538	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Alarm incident begin	11	1	1	0	0	60	0	0	0	0	1305	5	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Alarm incident end	11	1	1	0	0	60	0	0	0	0	1306	5	0	1	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Alarm escalated	11	1	1	0	0	60	0	0	0	0	1285	5	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Database sync	11	0	0	0	0	60	0	0	0	0	1286	10	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Database Changed										0																											
+	Database added	12	1	1	0	0	60	0	0	0	0	705	8	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Database modified	12	1	1	0	0	60	0	0	0	0	706	8	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Database deleted	12	1	1	0	0	60	0	0	0	0	707	8	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Database error	12	1	1	0	0	60	0	0	0	0	713	0	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+skipped	Added to cluster :	12	1	1	0	0	60	0	0	0	0	708	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+skipped	Rem from cluster :	12	1	1	0	0	60	0	0	0	0	709	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Report										0																											
+	Report started	12	1	0	0	0	60	0	0	1	1	773	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Report complete	12	1	0	0	0	60	0	0	1	1	774	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Report printed	12	1	0	0	0	60	0	0	1	1	775	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Report exported	12	1	0	0	0	60	0	0	1	1	776	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Report error	12	1	0	1	0	60	0	0	1	1	777	0	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+Operator Event Category										0																											
+	Operator logout	12	1	1	0	0	80	0	0	0	0	897	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator login	12	1	1	0	0	80	0	0	0	0	898	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator login fail	12	1	1	0	0	80	0	0	0	0	899	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Password login password mismatch	12	1	1	0	0	50	0	0	0	0	900	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator lockout	12	1	1	1	0	40	0	0	1	1	901	6	0	0	0	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator logout due to inactivity	12	1	1	0	0	60	0	0	0	0	902	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator task start	12	1	1	0	0	60	0	0	0	0	903	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator task end	12	1	1	0	0	60	0	0	0	0	905	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator password reset	12	1	1	0	0	50	0	0	0	0	908	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Retrieve request	12	1	1	0	0	50	0	0	0	0	906	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Send request	12	1	1	0	0	50	0	0	0	0	907	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Audit event responded	12	1	1	0	0	60	0	0	0	0	961	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Audit state changed	12	1	1	0	0	60	0	0	0	0	967	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator unlock door	12	1	1	0	0	60	0	0	0	0	909	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator lock door	12	1	1	0	0	60	0	0	0	0	910	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator open door	12	1	1	0	0	60	0	0	0	0	904	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator enable door	12	1	1	0	0	60	0	0	0	0	911	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator disable door	12	1	1	0	0	60	0	0	0	0	912	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator arm area	12	1	1	0	0	60	0	0	0	0	913	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator disarm area	12	1	1	0	0	60	0	0	0	0	914	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator isolate input	12	1	1	0	0	60	0	0	0	0	915	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator de-isolate input	12	1	1	0	0	60	0	0	0	0	916	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator reset input	12	1	1	0	0	60	0	0	0	0	917	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator set relay	12	1	1	0	0	60	0	0	0	0	918	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator reset relay	12	1	1	0	0	60	0	0	0	0	919	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator isolate RAS	12	1	1	0	0	60	0	0	0	0	920	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator de-isolate RAS	12	1	1	0	0	60	0	0	0	0	921	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator isolate DGP	12	1	1	0	0	60	0	0	0	0	922	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator de-isolate DGP	12	1	1	0	0	60	0	0	0	0	923	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator test battery	12	1	1	0	0	60	0	0	0	0	924	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator turn on automation zone	12	1	1	0	0	60	0	0	0	0	925	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator turn off automation zone	12	1	1	0	0	60	0	0	0	0	926	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator trigger automation zone	12	1	1	0	0	60	0	0	0	0	935	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator set automation zone level	12	1	1	0	0	60	0	0	0	0	936	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator secure floor	12	1	1	0	0	60	0	0	0	0	927	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator access floor	12	1	1	0	0	60	0	0	0	0	928	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator activate event macro	12	1	1	0	0	60	0	0	0	0	929	9	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator respond alarm	12	1	1	0	0	60	0	0	0	0	930	9	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator acknowledge alarm	12	1	1	0	0	60	0	0	0	0	931	9	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator delete alarm	12	1	1	0	0	60	0	0	0	0	932	9	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator disable panel	12	1	1	0	0	60	0	0	0	0	933	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator enable panel	12	1	1	0	0	60	0	0	0	0	934	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator cancel battery test	12	1	1	0	0	60	0	0	0	0	937	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator export panel	12	1	1	0	0	80	0	0	0	0	938	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator import panel	12	1	1	0	0	80	0	0	0	0	939	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator export system	12	1	1	0	0	80	0	0	0	0	940	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator import system	12	1	1	0	0	80	0	0	0	0	941	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator select system	12	1	1	0	0	80	0	0	0	0	942	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator reset device	12	1	1	0	0	80	0	0	0	0	943	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator request diagnostics info	12	1	1	0	0	80	0	0	0	0	944	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator request status	12	1	1	0	0	80	0	0	0	0	945	55	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator request firmware download	12	1	1	0	0	60	0	0	1	1	946	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator reset input test	12	1	1	0	0	60	0	0	1	1	947	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator isolate door alarms	12	1	1	0	0	60	0	0	1	1	948	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator de-isolate door alarms	12	1	1	0	0	60	0	0	1	1	949	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	Operator apply hardware license	12	1	1	0	0	60	0	0	1	1	950	6	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+User Event Category										0																											
+	In region too long	13	1	1	1	0	30	1986	0	1	0	1985	1	0	0	1	0	EF1111	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	In region too long restore	13	1	1	2	0	30	0	0	0	0	1986	1	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	User activated	13	1	1	0	0	50	0	0	0	0	1318	12	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
+	User expired	13	1	1	0	0	50	0	0	0	0	1319	12	0	0	0	0		0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0
