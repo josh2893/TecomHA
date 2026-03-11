@@ -17,15 +17,36 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "lock", "alarm_control_panel"]
 
+
+def _build_dump_debug_service(hass: HomeAssistant):
+    """Create the dump_debug service handler bound to this hass instance."""
+
+    async def _async_dump_debug_service(call):
+        """Write a debug dump for all loaded Tecom hubs."""
+        from .hub import TecomHub  # local import to keep config flow loadable
+
+        hubs = []
+        for value in hass.data.get(DOMAIN, {}).values():
+            if isinstance(value, TecomHub):
+                hubs.append(value)
+        if not hubs:
+            _LOGGER.warning("dump_debug called but no Tecom hubs are loaded")
+            return
+        for hub in hubs:
+            await hub.async_dump_debug()
+
+    return _async_dump_debug_service
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tecom ChallengerPlus from a config entry."""
     from .hub import TecomHub  # local import to keep config flow loadable
+
     hub = TecomHub(hass, entry)
     await hub.async_start()
-    # Register a debug dump service for troubleshooting.
-    async def _dump_debug(call):
-        await hub.async_dump_debug()
-    hass.services.async_register(DOMAIN, "dump_debug", _dump_debug)
+
+    if not hass.services.has_service(DOMAIN, "dump_debug"):
+        hass.services.async_register(DOMAIN, "dump_debug", _build_dump_debug_service(hass))
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = hub
 
@@ -45,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_update_listener))
     return True
 
+
 async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # Avoid rapid double-reloads causing UDP bind collisions.
     pending = hass.data.setdefault(DOMAIN, {}).get(PENDING_RELOAD_TASK)
@@ -58,8 +80,9 @@ async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     task = hass.async_create_task(_delayed_reload())
     hass.data[DOMAIN][PENDING_RELOAD_TASK] = task
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    hub: TecomHub = hass.data[DOMAIN].pop(entry.entry_id)
+    hub = hass.data[DOMAIN].pop(entry.entry_id)
     await hub.async_stop()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

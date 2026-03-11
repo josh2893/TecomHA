@@ -18,3 +18,8 @@ test_event:
       required: false
       selector:
         text:
+
+
+dump_debug:
+  name: Dump debug
+  description: Write a debug JSON file for all loaded Tecom ChallengerPlus hubs.
