@@ -54,7 +54,7 @@ This project has been built from:
 - CTPlus logs
 - observed UDP event and status traffic
 - the CTPlus event table
-- comparison against a Control4 Tecom driver
+- comparison against a C4 Tecom driver
 
 That work has already revealed a few important protocol facts:
 - the panel has separate **Alarm** and **Access** event queues
