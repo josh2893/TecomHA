@@ -129,7 +129,6 @@ On the panel path, the event filter controls what Home Assistant will receive.
 During reverse engineering, these categories were especially important:
 - alarm events
 - access events
-- system / communications events
 
 If these are filtered out, Home Assistant may still be able to poll statuses, but it will miss useful realtime events.
 
