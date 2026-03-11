@@ -694,8 +694,10 @@ class TecomHub:
             return
         payload = proto.build_ack(
             fr.seq,
-            # ACK format does not mirror the incoming FF-marker.
-            has_ff=False,
+            # CTPlus mirrors the incoming FF-marker on ACKs for FF-form panel events.
+            # Without this, some queued events (notably repeated/stuck alarm/access items)
+            # are accepted by HA but never retired from the panel queue.
+            has_ff=getattr(fr, 'has_ff', False),
             type_offset=getattr(fr, 'type_offset', self._type_offset),
         ).to_bytes()
         self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex(), 'note': 'panel_ack'})
