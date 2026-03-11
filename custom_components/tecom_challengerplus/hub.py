@@ -262,6 +262,10 @@ class TecomHub:
         # Doing the same helps bursts of egress+door events keep flowing without using
         # the more disruptive global "Retrieve events" command.
         self._input_refresh_tasks: dict[int, asyncio.Task] = {}
+        self._last_input_refresh_monotonic: dict[int, float] = {}
+        self._door_refresh_tasks: dict[int, asyncio.Task] = {}
+        self._last_door_refresh_monotonic: dict[int, float] = {}
+        self._poll_backoff_until: float = 0.0
 
 
     def _next_seq(self) -> int:
@@ -348,6 +352,11 @@ class TecomHub:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         self._input_refresh_tasks.clear()
+        for task in list(self._door_refresh_tasks.values()):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._door_refresh_tasks.clear()
 
         if self._transport_obj:
             await self._transport_obj.async_stop()
@@ -484,6 +493,13 @@ class TecomHub:
     async def _poll_loop(self) -> None:
         while True:
             try:
+                # When the panel is actively streaming queued events, back off host-initiated
+                # polling briefly so we do not occupy the command queue and starve event delivery.
+                now = asyncio.get_running_loop().time()
+                if now < self._poll_backoff_until:
+                    await asyncio.sleep(min(0.5, self._poll_backoff_until - now))
+                    continue
+
                 # Poll first, then sleep (so state updates quickly after reload/startup).
                 if getattr(self, 'input_poll_ranges', None):
                     for rs, re_ in self.input_poll_ranges:
@@ -714,15 +730,19 @@ class TecomHub:
 
 
 
-    def _schedule_input_status_refresh(self, input_no: int, *, delay: float = 0.015) -> None:
+    def _schedule_input_status_refresh(self, input_no: int, *, delay: float = 0.25) -> None:
         """Send a narrow input status query shortly after an input event.
 
-        CTPlus captures on comms path 3/3001 show that after 0x96/0x97 input events
-        (for example an egress input), CTPlus quickly issues "09 04 <n> <n>" for
-        that same input. This appears to help subsequent door/access events in the burst
-        arrive cleanly without forcing a global queue reset/retrieve.
+        Debounced/cooldown behaviour is important: during a backlog drain the panel can emit
+        many 0x96/0x97 input events in a short burst. If we immediately fire a refresh for each
+        one, we can occupy the command queue and make later queued events appear to stall.
         """
         if self.mode != MODE_CTPLUS or input_no <= 0:
+            return
+        now = asyncio.get_running_loop().time()
+        self._poll_backoff_until = max(self._poll_backoff_until, now + 1.5)
+        last = self._last_input_refresh_monotonic.get(input_no, 0.0)
+        if now - last < 1.0:
             return
         task = self._input_refresh_tasks.get(input_no)
         if task and not task.done():
@@ -732,7 +752,10 @@ class TecomHub:
             try:
                 if delay > 0:
                     await asyncio.sleep(delay)
+                while asyncio.get_running_loop().time() < self._poll_backoff_until:
+                    await asyncio.sleep(min(0.1, self._poll_backoff_until - asyncio.get_running_loop().time()))
                 await self._send_command(proto.cmd_request_input_status(input_no, input_no))
+                self._last_input_refresh_monotonic[input_no] = asyncio.get_running_loop().time()
                 self._debug_frames.append({
                     'ts': time.time(),
                     'dir': 'note',
@@ -748,6 +771,46 @@ class TecomHub:
                 self._input_refresh_tasks.pop(input_no, None)
 
         self._input_refresh_tasks[input_no] = asyncio.create_task(_runner())
+
+    def _schedule_door_status_refresh(self, door_no: int, *, delay: float = 0.25) -> None:
+        """Coalesced targeted door status refresh after door/access events."""
+        if self.mode != MODE_CTPLUS or door_no <= 0:
+            return
+        now = asyncio.get_running_loop().time()
+        self._poll_backoff_until = max(self._poll_backoff_until, now + 1.5)
+        last = self._last_door_refresh_monotonic.get(door_no, 0.0)
+        if now - last < 1.0:
+            return
+        task = self._door_refresh_tasks.get(door_no)
+        if task and not task.done():
+            return
+
+        async def _runner() -> None:
+            try:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                while asyncio.get_running_loop().time() < self._poll_backoff_until:
+                    await asyncio.sleep(min(0.1, self._poll_backoff_until - asyncio.get_running_loop().time()))
+                if door_no >= 17:
+                    await self._send_command(proto.cmd_request_door_status_wrapped(door_no))
+                else:
+                    await self._send_command(proto.cmd_request_ras_status(door_no))
+                self._last_door_refresh_monotonic[door_no] = asyncio.get_running_loop().time()
+                self._debug_frames.append({
+                    'ts': time.time(),
+                    'dir': 'note',
+                    'peer': str(self._udp_last_peer),
+                    'hex': '',
+                    'note': f'door_refresh:{door_no}',
+                })
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug("door status refresh failed for door %s", door_no, exc_info=True)
+            finally:
+                self._door_refresh_tasks.pop(door_no, None)
+
+        self._door_refresh_tasks[door_no] = asyncio.create_task(_runner())
 
     def _schedule_retrieve_events(self, *, delay: float = 0.05, reason: str = "event") -> None:
         """Ask the panel for the next queued event, like CTPlus "Retrieve events".
@@ -896,6 +959,9 @@ class TecomHub:
             # events
             if ev:
                 code, obj = ev
+                # Any unsolicited event means the panel is actively streaming queue items.
+                # Back off normal polling briefly so ACKs/events can flow without extra chatter.
+                self._poll_backoff_until = max(self._poll_backoff_until, asyncio.get_running_loop().time() + 1.5)
                 if code == 0x96:
                     self.state.inputs[obj] = False
                     self._schedule_input_status_refresh(obj)
@@ -918,10 +984,14 @@ class TecomHub:
                     self.state.door_words[obj] = 1
                     self.state.doors[obj] = "open"
                     self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
+                    self._schedule_door_status_refresh(obj)
                 elif code in (0xA6, 0xAF):
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
                     self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
+                    self._schedule_door_status_refresh(obj)
+                elif code in (0x86, 0x87, 0x88, 0x89, 0x92, 0x9D, 0xA7, 0xA8, 0xA9, 0xAA, 0xAE):
+                    self._schedule_door_status_refresh(obj)
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
