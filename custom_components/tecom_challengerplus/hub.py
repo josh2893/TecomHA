@@ -266,6 +266,14 @@ class TecomHub:
         self._door_refresh_tasks: dict[int, asyncio.Task] = {}
         self._last_door_refresh_monotonic: dict[int, float] = {}
         self._poll_backoff_until: float = 0.0
+        # On connect/reload, let the panel stream any queued events first before we
+        # start broad polling. This keeps host-initiated status recalls from competing
+        # with backlog delivery/ACKs on the command queue.
+        self._startup_backlog_drain: bool = True
+        self._startup_backlog_started_monotonic: float = 0.0
+        self._last_unsolicited_event_monotonic: float = 0.0
+        self._startup_backlog_quiet_seconds: float = 2.5
+        self._startup_backlog_max_seconds: float = 20.0
 
 
     def _next_seq(self) -> int:
@@ -317,21 +325,11 @@ class TecomHub:
                 except Exception:
                     _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
 
-            # Initial poll so entities don't sit 'unknown' until the first interval.
-            try:
-                if self.inputs_count > 0:
-                    await self.async_request_inputs(1, self.inputs_count)
-
-                if getattr(self, "relay_poll_ranges", None):
-                    for rs, re_ in self.relay_poll_ranges:
-                        await self.async_request_relays(rs, re_)
-
-                if getattr(self, "areas_count", 0) and self.areas_count > 0:
-                    await self.async_request_areas(1, self.areas_count)
-
-                await self.async_request_doors(force_all=True)
-            except Exception:
-                _LOGGER.debug("Initial poll failed (will retry on poll loop)", exc_info=True)
+            # Start heartbeats immediately so the panel keeps the path alive, but hold
+            # broad polling until queued events have had a chance to drain first.
+            self._startup_backlog_started_monotonic = asyncio.get_running_loop().time()
+            self._last_unsolicited_event_monotonic = self._startup_backlog_started_monotonic
+            self._startup_backlog_drain = True
 
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -496,6 +494,22 @@ class TecomHub:
                 # When the panel is actively streaming queued events, back off host-initiated
                 # polling briefly so we do not occupy the command queue and starve event delivery.
                 now = asyncio.get_running_loop().time()
+
+                if self._startup_backlog_drain:
+                    quiet_for = now - self._last_unsolicited_event_monotonic
+                    drain_for = now - self._startup_backlog_started_monotonic
+                    if drain_for < self._startup_backlog_max_seconds and quiet_for < self._startup_backlog_quiet_seconds:
+                        await asyncio.sleep(min(0.5, self._startup_backlog_quiet_seconds - quiet_for))
+                        continue
+                    try:
+                        await self._async_initial_sync()
+                    except Exception:
+                        _LOGGER.debug("Initial sync after backlog drain failed (will retry)", exc_info=True)
+                    else:
+                        self._startup_backlog_drain = False
+                    await asyncio.sleep(self.poll_interval)
+                    continue
+
                 if now < self._poll_backoff_until:
                     await asyncio.sleep(min(0.5, self._poll_backoff_until - now))
                     continue
@@ -514,7 +528,6 @@ class TecomHub:
                 if getattr(self, 'ras_door_ids', None):
                     for ras in self.ras_door_ids:
                         await self._send_command(proto.cmd_request_ras_status(ras))
-
 
                 await self.async_request_doors()
 
@@ -551,6 +564,24 @@ class TecomHub:
             count = min(4, end - cur + 1)
             await self._send_command(proto.cmd_request_area_status(cur, count))
             cur += count
+
+    async def _async_initial_sync(self) -> None:
+        """Perform one broad status sync after backlog drain / on demand."""
+        if self.inputs_count > 0:
+            await self.async_request_inputs(1, self.inputs_count)
+
+        if getattr(self, "relay_poll_ranges", None):
+            for rs, re_ in self.relay_poll_ranges:
+                await self.async_request_relays(rs, re_)
+
+        if getattr(self, "areas_count", 0) and self.areas_count > 0:
+            await self.async_request_areas(1, self.areas_count)
+
+        if getattr(self, 'ras_door_ids', None):
+            for ras in self.ras_door_ids:
+                await self._send_command(proto.cmd_request_ras_status(ras))
+
+        await self.async_request_doors(force_all=True)
 
     async def async_request_doors(self, force_all: bool = False) -> None:
         """Request status for DGP doors (17+) only.
@@ -959,9 +990,22 @@ class TecomHub:
             # events
             if ev:
                 code, obj = ev
+                loop_now = asyncio.get_running_loop().time()
+                self._last_unsolicited_event_monotonic = loop_now
                 # Any unsolicited event means the panel is actively streaming queue items.
                 # Back off normal polling briefly so ACKs/events can flow without extra chatter.
-                self._poll_backoff_until = max(self._poll_backoff_until, asyncio.get_running_loop().time() + 1.5)
+                self._poll_backoff_until = max(self._poll_backoff_until, loop_now + 2.5)
+
+                payload = decode_ctplus_event(code, obj, fr.body.hex())
+
+                # Suppress retransmitted duplicates on the HA event bus *and* avoid spawning
+                # extra targeted refreshes for the same repeated queue-head event.
+                repeat_count = self._note_panel_event_retransmit(fr)
+                if repeat_count > 1:
+                    self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
+                    self._notify()
+                    return
+
                 if code == 0x96:
                     self.state.inputs[obj] = False
                     self._schedule_input_status_refresh(obj)
@@ -983,28 +1027,20 @@ class TecomHub:
                 elif code == 0xA5:
                     self.state.door_words[obj] = 1
                     self.state.doors[obj] = "open"
-                    self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
+                    self._door_event_prefer_until[obj] = loop_now + 15.0
                     self._schedule_door_status_refresh(obj)
                 elif code in (0xA6, 0xAF):
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
-                    self._door_event_prefer_until[obj] = asyncio.get_running_loop().time() + 15.0
+                    self._door_event_prefer_until[obj] = loop_now + 15.0
                     self._schedule_door_status_refresh(obj)
                 elif code in (0x86, 0x87, 0x88, 0x89, 0x92, 0x9D, 0xA7, 0xA8, 0xA9, 0xAA, 0xAE):
                     self._schedule_door_status_refresh(obj)
 
-                payload = decode_ctplus_event(code, obj, fr.body.hex())
-
-                # Suppress retransmitted duplicates on the HA event bus.
                 # Do not automatically fire the global "Retrieve events" command here:
                 # captures show that command is useful as a manual recovery tool, but when
                 # injected into normal event flow on path 3 it causes "path event reset"
                 # churn and missed close-together events.
-                repeat_count = self._note_panel_event_retransmit(fr)
-                if repeat_count > 1:
-                    self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
-                    self._notify()
-                    return
                 self._last_retrieve_events_key = None
 
                 self.state.last_event = payload.get('text') or payload.get('message')
