@@ -1,4 +1,5 @@
-# Tecom ChallengerPlus Home Assistant Integration
+<img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/01a73e82-1592-4981-bc16-8f14fe9f388f" />
+Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
 
@@ -128,7 +129,6 @@ On the panel path, the event filter controls what Home Assistant will receive.
 During reverse engineering, these categories were especially important:
 - alarm events
 - access events
-- system / communications events
 
 If these are filtered out, Home Assistant may still be able to poll statuses, but it will miss useful realtime events.
 
