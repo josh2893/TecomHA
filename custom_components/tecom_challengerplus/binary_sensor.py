@@ -101,6 +101,34 @@ class TecomDoorContactBinarySensor(BinarySensorEntity):
             return None
         return bool(w & 0x0080)
 
+    @property
+    def extra_state_attributes(self):
+        state = getattr(self._hub.state, "doors", {}).get(self._door)
+        w = getattr(self._hub.state, "door_words", {}).get(self._door)
+
+        attrs = {
+            "door_state": state,
+            "last_event": getattr(self._hub.state, "last_event", None),
+        }
+        if w is not None:
+            attrs.update(
+                {
+                    "raw_status": w,
+                    "raw_status_hex": f"0x{w:04X}",
+                    "raw_status_binary": f"{w:016b}",
+                    "bit_0x0080_open": bool(w & 0x0080),
+                    "bit_0x0002_set": bool(w & 0x0002),
+                    "bit_0x0010_set": bool(w & 0x0010),
+                    "bit_0x0080_set": bool(w & 0x0080),
+                    "contact_derived_from": (
+                        "state.doors" if state in ("open", "closed") else "raw_status_bit_0x0080"
+                    ),
+                }
+            )
+        else:
+            attrs["contact_derived_from"] = "state.doors"
+        return attrs
+
 
 class TecomRasContact(BinarySensorEntity):
     """RAS / keypad / simple door controller status surfaced as an opening sensor (best-effort)."""
