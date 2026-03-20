@@ -573,7 +573,14 @@ class TecomHub:
             cur += count
 
     async def _async_initial_sync(self) -> None:
-        """Perform one broad status sync after backlog drain / on demand."""
+        """Perform one broad status sync after backlog drain / on demand.
+
+        When "door poll startup only" is enabled, the one-shot startup door sweep needs to be
+        more patient than the normal continuous round-robin loop. In practice, firing all door
+        recalls in one burst can leave later doors unknown even though the panel/path is healthy.
+        So for startup-only mode we do a few paced passes over the still-unknown DGP doors until
+        they populate or we hit a small retry limit.
+        """
         if self.inputs_count > 0:
             await self.async_request_inputs(1, self.inputs_count)
 
@@ -588,7 +595,43 @@ class TecomHub:
             for ras in self.ras_door_ids:
                 await self._send_command(proto.cmd_request_ras_status(ras))
 
-        await self.async_request_doors(force_all=True)
+        if getattr(self, "door_poll_startup_only", False):
+            await self._async_startup_door_sweep()
+        else:
+            await self.async_request_doors(force_all=True)
+
+    async def _async_startup_door_sweep(self) -> None:
+        """Populate DGP door states once at startup without relying on later polling.
+
+        We intentionally poll in small paced passes instead of one large burst so the panel's
+        command queue has time to return every door status. This avoids the common symptom where
+        Door 17/18 populate but later doors stay Unknown after reload.
+        """
+        if not getattr(self, "dgp_door_ids", None):
+            return
+
+        # Ensure the observed door-status init has been sent before any per-door recall.
+        if not self._door_status_inited:
+            await self._send_command(proto.cmd_door_status_init())
+            self._door_status_inited = True
+
+        batch_size = max(1, min(int(self.door_status_per_cycle or 1), len(self.dgp_door_ids)))
+        max_passes = max(3, len(self.dgp_door_ids) * 2)
+
+        for _ in range(max_passes):
+            unknown = [door for door in self.dgp_door_ids if self.state.door_words.get(door) is None]
+            if not unknown:
+                break
+
+            for idx in range(0, len(unknown), batch_size):
+                batch = unknown[idx:idx + batch_size]
+                for door in batch:
+                    await self._send_command(proto.cmd_request_door_status_wrapped(door))
+                # Give the panel a moment to answer this small batch before asking for more.
+                await asyncio.sleep(max(0.35, self._min_send_interval * 3.0))
+
+            # Allow trailing replies from the last batch to arrive before the next pass.
+            await asyncio.sleep(max(0.6, self._min_send_interval * 6.0))
 
     async def async_request_doors(self, force_all: bool = False) -> None:
         """Request status for DGP doors (17+) only.
