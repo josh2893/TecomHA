@@ -41,8 +41,14 @@ def _build_dump_debug_service(hass: HomeAssistant):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tecom ChallengerPlus from a config entry."""
     from .hub import TecomHub  # local import to keep config flow loadable
+    from .const import CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH
+    from .panel_export import load_panel_export_names
 
-    hub = TecomHub(hass, entry)
+    cfg = {**entry.data, **entry.options}
+    panel_export_path = str(cfg.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH) or '').strip()
+    panel_export_names = await hass.async_add_executor_job(load_panel_export_names, panel_export_path)
+
+    hub = TecomHub(hass, entry, panel_export_names=panel_export_names)
     await hub.async_start()
 
     if not hass.services.has_service(DOMAIN, "dump_debug"):

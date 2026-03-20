@@ -77,7 +77,7 @@ from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
 from . import ctplus_protocol as proto
 from .ctplus_event_decoder import decode_ctplus_event
-from .panel_export import PanelExportNames, load_panel_export_names
+from .panel_export import PanelExportNames
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ class TecomState:
 
 
 class TecomHub:
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, panel_export_names: PanelExportNames | None = None) -> None:
         self.hass = hass
         self.entry = entry
 
@@ -192,7 +192,7 @@ class TecomHub:
         self.panel_export_rename_doors: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))
         self.panel_export_rename_relays: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS))
         self.panel_export_rename_rases: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES))
-        self.panel_export_names: PanelExportNames = load_panel_export_names(self.panel_export_path)
+        self.panel_export_names: PanelExportNames = panel_export_names or PanelExportNames()
 
         self.inputs_count = int(cfg.get(CONF_INPUTS_COUNT, 0))
         # Inputs can be non-contiguous; input_ranges overrides inputs_count when set.
@@ -302,6 +302,41 @@ class TecomHub:
         self._startup_backlog_quiet_seconds: float = 2.5
         self._startup_backlog_max_seconds: float = 20.0
 
+
+    def entity_name(self, kind: str, number: int, default: str) -> str:
+        """Return a friendly name override from an imported CTPlus export.panel file.
+
+        This only applies to entities that the integration has already loaded; it
+        does not create additional objects. Entity IDs / unique IDs remain
+        unchanged and only the display name is overridden when an imported match
+        exists and the corresponding rename option is enabled.
+        """
+
+        kind = str(kind or '').lower()
+        mapping: dict[int, str] | None = None
+        enabled = False
+
+        if kind == 'area':
+            mapping = self.panel_export_names.areas
+            enabled = self.panel_export_rename_areas
+        elif kind == 'input':
+            mapping = self.panel_export_names.inputs
+            enabled = self.panel_export_rename_inputs
+        elif kind == 'door':
+            mapping = self.panel_export_names.doors
+            enabled = self.panel_export_rename_doors
+        elif kind == 'relay':
+            mapping = self.panel_export_names.relays
+            enabled = self.panel_export_rename_relays
+        elif kind == 'ras':
+            mapping = self.panel_export_names.rases
+            enabled = self.panel_export_rename_rases
+
+        if enabled and mapping:
+            name = mapping.get(int(number))
+            if name:
+                return name
+        return default
 
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
