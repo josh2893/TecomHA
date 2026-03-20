@@ -1,5 +1,4 @@
-<img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/01a73e82-1592-4981-bc16-8f14fe9f388f" />
-Tecom ChallengerPlus Home Assistant Integration
+# Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
 
@@ -55,7 +54,7 @@ This project has been built from:
 - CTPlus logs
 - observed UDP event and status traffic
 - the CTPlus event table
-- comparison against a C4 Tecom driver
+- comparison against a Control4 Tecom driver
 
 That work has already revealed a few important protocol facts:
 - the panel has separate **Alarm** and **Access** event queues
@@ -129,6 +128,7 @@ On the panel path, the event filter controls what Home Assistant will receive.
 During reverse engineering, these categories were especially important:
 - alarm events
 - access events
+- system / communications events
 
 If these are filtered out, Home Assistant may still be able to poll statuses, but it will miss useful realtime events.
 
@@ -152,6 +152,31 @@ Typical options include:
 - Use a dedicated comms path for HA rather than sharing with CTPlus.
 
 ---
+
+
+### Importing names from a CTPlus `export.panel`
+The integration can optionally read a CTPlus `export.panel` file and use it to apply friendly names to entities that are **already loaded in Home Assistant**.
+
+This import is intentionally **name-only** for now. It does **not** create extra entities and it does **not** currently remap door contact logic from the export.
+
+How it works:
+- copy `export.panel` into Home Assistant, typically somewhere under `/config`
+- open the integration **Options**
+- set **Panel export path** to the file, for example `/config/export.panel`
+- enable whichever rename toggles you want (areas, inputs, doors, relays, RAS)
+- save the options so the integration reloads
+
+Important behavior:
+- only objects that the integration has actually loaded will be renamed
+- unloaded panel objects are ignored
+- entity IDs and unique IDs are left alone; only the friendly/display names change
+
+Example:
+- `Door 17` can become `Front Door - 17B`
+- `Input 19` can become `Front Door Egress - 17B`
+- `Area 2` can become `Area 2 - Shed 17B Nimrod`
+
+This makes dashboards and automations easier to understand without implying that Home Assistant is monitoring every object in the panel export.
 
 ## Entities
 

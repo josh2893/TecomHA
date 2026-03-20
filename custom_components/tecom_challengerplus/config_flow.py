@@ -52,6 +52,12 @@ from .const import (
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
+    CONF_PANEL_EXPORT_PATH,
+    CONF_PANEL_EXPORT_RENAME_AREAS,
+    CONF_PANEL_EXPORT_RENAME_INPUTS,
+    CONF_PANEL_EXPORT_RENAME_DOORS,
+    CONF_PANEL_EXPORT_RENAME_RELAYS,
+    CONF_PANEL_EXPORT_RENAME_RASES,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -59,6 +65,12 @@ from .const import (
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
+    DEFAULT_PANEL_EXPORT_PATH,
+    DEFAULT_PANEL_EXPORT_RENAME_AREAS,
+    DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
+    DEFAULT_PANEL_EXPORT_RENAME_DOORS,
+    DEFAULT_PANEL_EXPORT_RENAME_RELAYS,
+    DEFAULT_PANEL_EXPORT_RENAME_RASES,
     DEFAULT_DGP_DOOR_RANGES,
     DEFAULT_RAS_DOOR_RANGES,
     CONF_AREAS_COUNT,
@@ -141,6 +153,12 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
     d.setdefault(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY)
+    d.setdefault(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH)
+    d.setdefault(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS)
+    d.setdefault(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS)
+    d.setdefault(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS)
+    d.setdefault(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS)
+    d.setdefault(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES)
     d.setdefault(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES)
     d.setdefault(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES)
     return d
@@ -184,6 +202,16 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
             ),
+
+            # Optional CTPlus export.panel import for friendly naming.
+            vol.Optional(CONF_PANEL_EXPORT_PATH, default=str(defaults.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH))): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+            vol.Optional(CONF_PANEL_EXPORT_RENAME_AREAS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))): selector.BooleanSelector(),
+            vol.Optional(CONF_PANEL_EXPORT_RENAME_INPUTS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS))): selector.BooleanSelector(),
+            vol.Optional(CONF_PANEL_EXPORT_RENAME_DOORS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))): selector.BooleanSelector(),
+            vol.Optional(CONF_PANEL_EXPORT_RENAME_RELAYS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS))): selector.BooleanSelector(),
+            vol.Optional(CONF_PANEL_EXPORT_RENAME_RASES, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES))): selector.BooleanSelector(),
 
             # Inputs / Areas are still simple contiguous ranges (1..N).
             vol.Required(CONF_INPUTS_COUNT, default=int(defaults.get(CONF_INPUTS_COUNT, 0))): selector.NumberSelector(

@@ -39,7 +39,7 @@ class TecomDoorLock(LockEntity):
     def __init__(self, hub, door: int) -> None:
         self._hub = hub
         self._door = door
-        self._attr_name = f"Door {door}"
+        self._attr_name = hub.entity_name("door", door, f"Door {door}")
         self._attr_unique_id = f"{hub.entry.entry_id}_door_{door}"
         self._unsub = None
 
@@ -99,7 +99,7 @@ class TecomRasDoorLock(LockEntity):
     def __init__(self, hub, ras: int) -> None:
         self._hub = hub
         self._ras = ras
-        self._attr_name = f"RAS Door {ras}"
+        self._attr_name = hub.entity_name("ras", ras, f"RAS Door {ras}")
         self._attr_unique_id = f"{hub.entry.entry_id}_ras_{ras}"
         self._unsub = None
 

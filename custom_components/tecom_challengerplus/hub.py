@@ -49,6 +49,12 @@ from .const import (
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
+    CONF_PANEL_EXPORT_PATH,
+    CONF_PANEL_EXPORT_RENAME_AREAS,
+    CONF_PANEL_EXPORT_RENAME_INPUTS,
+    CONF_PANEL_EXPORT_RENAME_DOORS,
+    CONF_PANEL_EXPORT_RENAME_RELAYS,
+    CONF_PANEL_EXPORT_RENAME_RASES,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -56,6 +62,12 @@ from .const import (
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
+    DEFAULT_PANEL_EXPORT_PATH,
+    DEFAULT_PANEL_EXPORT_RENAME_AREAS,
+    DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
+    DEFAULT_PANEL_EXPORT_RENAME_DOORS,
+    DEFAULT_PANEL_EXPORT_RENAME_RELAYS,
+    DEFAULT_PANEL_EXPORT_RENAME_RASES,
     DEFAULT_DGP_DOOR_RANGES,
     DEFAULT_RAS_DOOR_RANGES,
     CONF_DGP_DOOR_RANGES,
@@ -65,6 +77,7 @@ from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
 from . import ctplus_protocol as proto
 from .ctplus_event_decoder import decode_ctplus_event
+from .panel_export import PanelExportNames, load_panel_export_names
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -172,6 +185,14 @@ class TecomHub:
             _door_poll_startup_only_cfg = _door_poll_startup_only_cfg.strip().lower() in ("1", "true", "yes", "on")
         self.door_poll_startup_only: bool = bool(_door_poll_startup_only_cfg)
 
+        # Optional CTPlus export.panel import for friendly naming only.
+        self.panel_export_path: str = str(cfg.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH) or "").strip()
+        self.panel_export_rename_areas: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))
+        self.panel_export_rename_inputs: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS))
+        self.panel_export_rename_doors: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))
+        self.panel_export_rename_relays: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS))
+        self.panel_export_rename_rases: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES))
+        self.panel_export_names: PanelExportNames = load_panel_export_names(self.panel_export_path)
 
         self.inputs_count = int(cfg.get(CONF_INPUTS_COUNT, 0))
         # Inputs can be non-contiguous; input_ranges overrides inputs_count when set.

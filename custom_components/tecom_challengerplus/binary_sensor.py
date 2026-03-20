@@ -31,7 +31,7 @@ class TecomInputBinarySensor(BinarySensorEntity):
     def __init__(self, hub, number: int) -> None:
         self._hub = hub
         self._number = number
-        self._attr_name = f"Input {number}"
+        self._attr_name = hub.entity_name("input", number, f"Input {number}")
         self._attr_unique_id = f"{hub.entry.entry_id}_input_{number}"
         self._unsub = None
 
@@ -67,7 +67,7 @@ class TecomDoorContactBinarySensor(BinarySensorEntity):
     def __init__(self, hub, door: int) -> None:
         self._hub = hub
         self._door = door
-        self._attr_name = f"Door {door} Contact"
+        self._attr_name = hub.contact_name(door, f"Door {door} Contact")
         self._attr_unique_id = f"{hub.entry.entry_id}_door_contact_{door}"
         self._unsub = None
 
@@ -138,7 +138,7 @@ class TecomRasContact(BinarySensorEntity):
     def __init__(self, hub, ras: int) -> None:
         self._hub = hub
         self._ras = ras
-        self._attr_name = f"RAS Door {ras} Contact"
+        self._attr_name = hub.contact_name(ras, f"RAS Door {ras} Contact")
         self._attr_unique_id = f"{hub.entry.entry_id}_ras_contact_{ras}"
         self._unsub = None
 

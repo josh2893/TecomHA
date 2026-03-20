@@ -37,7 +37,7 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
     def __init__(self, hub, area: int) -> None:
         self._hub = hub
         self._area = area
-        self._attr_name = f"Area {area}"
+        self._attr_name = hub.entity_name("area", area, f"Area {area}")
         self._attr_unique_id = f"{hub.entry.entry_id}_area_{area}"
         self._unsub = None
 

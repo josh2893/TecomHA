@@ -22,7 +22,7 @@ class TecomRelaySwitch(SwitchEntity):
     def __init__(self, hub, relay: int) -> None:
         self._hub = hub
         self._relay = relay
-        self._attr_name = f"Relay {relay}"
+        self._attr_name = hub.entity_name("relay", relay, f"Relay {relay}")
         self._attr_unique_id = f"{hub.entry.entry_id}_relay_{relay}"
         self._unsub = None
 
