@@ -62,6 +62,21 @@ class TecomDoorLock(LockEntity):
 
     @property
     def is_locked(self):
+        # Prefer explicit lock/secure events when available. These are a better match for
+        # CTPlus's door control semantics than simply treating any non-zero door word as
+        # "unlocked".
+        lock_state = getattr(self._hub.state, "door_lock", {}).get(self._door)
+        if lock_state in ("locked", "auto_locked"):
+            return True
+        if lock_state in ("unlocked", "auto_unlocked"):
+            return False
+
+        secure_state = getattr(self._hub.state, "door_secure", {}).get(self._door)
+        if secure_state == "secured":
+            return True
+        if secure_state == "unsecured":
+            return False
+
         w = getattr(self._hub.state, "door_words", {}).get(self._door)
         if w is None:
             return None
@@ -70,9 +85,22 @@ class TecomDoorLock(LockEntity):
     @property
     def extra_state_attributes(self):
         w = getattr(self._hub.state, "door_words", {}).get(self._door)
-        if w is None:
-            return {}
-        return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
+        attrs = {
+            "door_state": getattr(self._hub.state, "doors", {}).get(self._door),
+            "lock_state": getattr(self._hub.state, "door_lock", {}).get(self._door),
+            "secure_state": getattr(self._hub.state, "door_secure", {}).get(self._door),
+            "last_event": getattr(self._hub.state, "last_event", None),
+        }
+        if w is not None:
+            attrs.update({
+                "raw_status": w,
+                "raw_status_hex": f"0x{w:04X}",
+                "raw_status_binary": f"{w:016b}",
+                "bit_0x0002_set": bool(w & 0x0002),
+                "bit_0x0010_set": bool(w & 0x0010),
+                "bit_0x0080_set": bool(w & 0x0080),
+            })
+        return attrs
 
     async def async_lock(self, **kwargs):
         return
@@ -131,7 +159,9 @@ class TecomRasDoorLock(LockEntity):
     @property
     def extra_state_attributes(self):
         st = getattr(self._hub.state, "ras_status", {}).get(self._ras)
+        attrs = {"last_event": getattr(self._hub.state, "last_event", None)}
         if st is None:
-            return {}
-        return {"raw_status": st, "raw_status_hex": f"0x{st:02X}"}
+            return attrs
+        attrs.update({"raw_status": st, "raw_status_hex": f"0x{st:02X}"})
+        return attrs
 

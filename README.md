@@ -474,3 +474,9 @@ The best captures are usually the simplest ones:
 This project is community-built and reverse engineered.
 It is not affiliated with Aritech or Tecom.
 Use it carefully, test thoroughly, and treat it as an evolving integration rather than a finished commercial product.
+
+
+## 2.0.70
+- Relay switch entities are now grouped under the Tecom device in Home Assistant.
+- Relay switch entities now expose basic debug attributes.
+- Door lock entities now expose richer debug attributes and prefer explicit lock/secure events over the raw door word when available.

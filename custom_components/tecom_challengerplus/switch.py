@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchEntity
 
 from .const import DOMAIN
 from .exceptions import TecomNotSupported
+from homeassistant.helpers.entity import DeviceInfo
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     hub = hass.data[DOMAIN][entry.entry_id]
@@ -37,6 +38,23 @@ class TecomRelaySwitch(SwitchEntity):
     @property
     def is_on(self):
         return self._hub.state.relays.get(self._relay)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._hub.entry.unique_id or self._hub.entry.entry_id)},
+            name=self._hub.entry.title,
+            manufacturer="Aritech / Tecom",
+            model="ChallengerPlus",
+        )
+
+    @property
+    def extra_state_attributes(self):
+        state = self._hub.state.relays.get(self._relay)
+        return {
+            "relay_state": state,
+            "last_event": getattr(self._hub.state, "last_event", None),
+        }
 
     async def async_turn_on(self, **kwargs):
         try:

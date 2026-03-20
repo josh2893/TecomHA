@@ -146,6 +146,8 @@ class TecomState:
     area_words: dict[int, int] = None
     door_words: dict[int, int] = None
     ras_status: dict[int, int] = None
+    door_secure: dict[int, str] = None
+    door_lock: dict[int, str] = None
 
     def __post_init__(self):
         self.inputs = self.inputs or {}
@@ -155,6 +157,8 @@ class TecomState:
         self.area_words = self.area_words or {}
         self.door_words = self.door_words or {}
         self.ras_status = self.ras_status or {}
+        self.door_secure = self.door_secure or {}
+        self.door_lock = self.door_lock or {}
 
 
 class TecomHub:
@@ -1169,12 +1173,31 @@ class TecomHub:
                     self.state.doors[obj] = "open"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
                     self._schedule_door_status_refresh(obj)
-                elif code in (0xA6, 0xAF):
+                elif code == 0xA6:
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
                     self._schedule_door_status_refresh(obj)
-                elif code in (0x86, 0x87, 0x88, 0x89, 0x92, 0x9D, 0xA7, 0xA8, 0xA9, 0xAA, 0xAE):
+                elif code == 0xAF:
+                    # "Secured" is a lock/secure-state event, not necessarily a contact-close event.
+                    self.state.door_secure[obj] = "secured"
+                    self._schedule_door_status_refresh(obj)
+                elif code == 0xAE:
+                    self.state.door_secure[obj] = "unsecured"
+                    self._schedule_door_status_refresh(obj)
+                elif code == 0x86:
+                    self.state.door_lock[obj] = "unlocked"
+                    self._schedule_door_status_refresh(obj)
+                elif code == 0x87:
+                    self.state.door_lock[obj] = "locked"
+                    self._schedule_door_status_refresh(obj)
+                elif code == 0x88:
+                    self.state.door_lock[obj] = "auto_unlocked"
+                    self._schedule_door_status_refresh(obj)
+                elif code == 0x89:
+                    self.state.door_lock[obj] = "auto_locked"
+                    self._schedule_door_status_refresh(obj)
+                elif code in (0x92, 0x9D, 0xA7, 0xA8, 0xA9, 0xAA):
                     self._schedule_door_status_refresh(obj)
 
                 # Do not automatically fire the global "Retrieve events" command here:
