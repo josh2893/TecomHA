@@ -324,38 +324,52 @@ class TecomHub:
         return f"{base_name}{suffix}"
 
     def entity_name(self, kind: str, number: int, default: str) -> str:
-        """Return a friendly name override from an imported CTPlus export.panel file.
+        """Return a friendly display name for an entity.
 
-        This only applies to entities that the integration has already loaded; it
-        does not create additional objects. Entity IDs / unique IDs remain
-        unchanged and only the display name is overridden when an imported match
-        exists and the corresponding rename option is enabled.
+        When an imported CTPlus export.panel name is available and the matching
+        rename option is enabled, we keep the Home Assistant UI organised by
+        prefixing the imported name with the object type and number. This keeps
+        alphabetical sorting aligned with the panel numbering, for example:
+        ``Door 17 - Front Door - 17B`` or ``Input 19 - Front Door Egress - 17B``.
+
+        Only entities that the integration has already loaded are renamed. Entity
+        IDs / unique IDs remain unchanged.
         """
 
         kind = str(kind or '').lower()
         mapping: dict[int, str] | None = None
         enabled = False
+        label: str | None = None
 
         if kind == 'area':
             mapping = self.panel_export_names.areas
             enabled = self.panel_export_rename_areas
+            label = 'Area'
         elif kind == 'input':
             mapping = self.panel_export_names.inputs
             enabled = self.panel_export_rename_inputs
+            label = 'Input'
         elif kind == 'door':
             mapping = self.panel_export_names.doors
             enabled = self.panel_export_rename_doors
+            label = 'Door'
         elif kind == 'relay':
             mapping = self.panel_export_names.relays
             enabled = self.panel_export_rename_relays
+            label = 'Relay'
         elif kind == 'ras':
             mapping = self.panel_export_names.rases
             enabled = self.panel_export_rename_rases
+            label = 'RAS'
 
-        if enabled and mapping:
+        if enabled and mapping and label:
             name = mapping.get(int(number))
             if name:
-                return name
+                prefix = f"{label} {int(number)}"
+                lowered = name.lower()
+                if lowered == prefix.lower() or lowered.startswith(prefix.lower() + " -"):
+                    return name
+                return f"{prefix} - {name}"
         return default
 
     def _next_seq(self) -> int:
