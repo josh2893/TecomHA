@@ -303,6 +303,26 @@ class TecomHub:
         self._startup_backlog_max_seconds: float = 20.0
 
 
+    def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
+        """Return a friendly display name for contact-style entities.
+
+        Door and RAS contact sensors should use the imported friendly base name
+        when available, while still keeping the explicit "Contact" suffix so the
+        entity purpose stays obvious in Home Assistant.
+        """
+
+        suffix = " Contact"
+        default_str = str(default)
+        if default_str.endswith(suffix):
+            base_default = default_str[: -len(suffix)]
+        else:
+            base_default = default_str
+
+        base_name = self.entity_name(kind, number, base_default)
+        if base_name.endswith(suffix):
+            return base_name
+        return f"{base_name}{suffix}"
+
     def entity_name(self, kind: str, number: int, default: str) -> str:
         """Return a friendly name override from an imported CTPlus export.panel file.
 
