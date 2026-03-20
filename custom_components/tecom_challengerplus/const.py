@@ -65,6 +65,7 @@ CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"  # seconds
 CONF_MIN_SEND_INTERVAL_MS = "min_send_interval_ms"  # milliseconds between UDP frames (rate limit)
 CONF_DOOR_STATUS_MODE = "door_status_mode"  # "round_robin" or "all_each_cycle"
 CONF_DOOR_STATUS_PER_CYCLE = "door_status_per_cycle"  # how many doors to poll per cycle when round-robin
+CONF_DOOR_POLL_STARTUP_ONLY = "door_poll_startup_only"  # only do broad door polling during initial startup sync
 
 DEFAULT_SEND_ACKS = True
 DEFAULT_SEND_HEARTBEATS = True
@@ -72,6 +73,7 @@ DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 3
 DEFAULT_MIN_SEND_INTERVAL_MS = 50
 DEFAULT_DOOR_STATUS_MODE = "round_robin"
 DEFAULT_DOOR_STATUS_PER_CYCLE = 1
+DEFAULT_DOOR_POLL_STARTUP_ONLY = False
 DEFAULT_DGP_DOOR_RANGES = ""
 DEFAULT_RAS_DOOR_RANGES = ""
 CONF_DGP_DOOR_RANGES = "dgp_door_ranges"  # e.g. "17-20,21-24,33-36"

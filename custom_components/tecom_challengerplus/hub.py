@@ -48,12 +48,14 @@ from .const import (
     CONF_MIN_SEND_INTERVAL_MS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
+    CONF_DOOR_POLL_STARTUP_ONLY,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
+    DEFAULT_DOOR_POLL_STARTUP_ONLY,
     DEFAULT_DGP_DOOR_RANGES,
     DEFAULT_RAS_DOOR_RANGES,
     CONF_DGP_DOOR_RANGES,
@@ -165,6 +167,7 @@ class TecomHub:
         self.min_send_interval_ms: int = int(cfg.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))
         self.door_status_mode: str = str(cfg.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE) or DEFAULT_DOOR_STATUS_MODE)
         self.door_status_per_cycle: int = int(cfg.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))
+        self.door_poll_startup_only: bool = bool(cfg.get(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY))
 
 
         self.inputs_count = int(cfg.get(CONF_INPUTS_COUNT, 0))
@@ -529,7 +532,8 @@ class TecomHub:
                     for ras in self.ras_door_ids:
                         await self._send_command(proto.cmd_request_ras_status(ras))
 
-                await self.async_request_doors()
+                if not self.door_poll_startup_only:
+                    await self.async_request_doors()
 
                 await asyncio.sleep(self.poll_interval)
             except asyncio.CancelledError:
@@ -1078,6 +1082,7 @@ class TecomHub:
                     "poll_interval": self.poll_interval,
                     "door_status_mode": self.door_status_mode,
                     "door_status_per_cycle": self.door_status_per_cycle,
+                    "door_poll_startup_only": self.door_poll_startup_only,
                     "min_send_interval_ms": self.min_send_interval_ms,
                     "dgp_door_ids": list(self.dgp_door_ids),
                     "ras_door_ids": list(self.ras_door_ids),

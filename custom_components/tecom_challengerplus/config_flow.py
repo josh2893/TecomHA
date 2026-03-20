@@ -51,12 +51,14 @@ from .const import (
     CONF_MIN_SEND_INTERVAL_MS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
+    CONF_DOOR_POLL_STARTUP_ONLY,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
+    DEFAULT_DOOR_POLL_STARTUP_ONLY,
     DEFAULT_DGP_DOOR_RANGES,
     DEFAULT_RAS_DOOR_RANGES,
     CONF_AREAS_COUNT,
@@ -138,6 +140,7 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS)
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
+    d.setdefault(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY)
     d.setdefault(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES)
     d.setdefault(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES)
     return d
@@ -229,6 +232,7 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
             ),
+            vol.Optional(CONF_DOOR_POLL_STARTUP_ONLY, default=bool(defaults.get(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY))): selector.BooleanSelector(),
         }
     )
 
