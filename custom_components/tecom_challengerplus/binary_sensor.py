@@ -56,6 +56,35 @@ class TecomInputBinarySensor(BinarySensorEntity):
     def is_on(self):
         return self._hub.state.inputs.get(self._number)
 
+    @property
+    def extra_state_attributes(self):
+        state = self._hub.state.inputs.get(self._number)
+        raw = getattr(self._hub.state, "input_words", {}).get(self._number)
+        attrs = {
+            "input_state": state,
+            "last_event": getattr(self._hub.state, "last_event", None),
+        }
+        if raw is not None:
+            attrs.update(
+                {
+                    "raw_status": raw,
+                    "raw_status_hex": f"0x{raw:02X}",
+                    "raw_status_binary": f"{raw:08b}",
+                    "bit_0x01_set": bool(raw & 0x01),
+                    "bit_0x02_set": bool(raw & 0x02),
+                    "bit_0x04_set": bool(raw & 0x04),
+                    "bit_0x08_set": bool(raw & 0x08),
+                    "bit_0x10_set": bool(raw & 0x10),
+                    "bit_0x20_sealed": bool(raw & 0x20),
+                    "bit_0x40_set": bool(raw & 0x40),
+                    "bit_0x80_set": bool(raw & 0x80),
+                    "state_derived_from": "raw_status_bit_0x20",
+                }
+            )
+        else:
+            attrs["state_derived_from"] = "event_only"
+        return attrs
+
 
 class TecomDoorContactBinarySensor(BinarySensorEntity):
     """Door contact derived from CTPlus door status words."""

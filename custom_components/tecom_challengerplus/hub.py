@@ -140,6 +140,7 @@ def expand_ranges(ranges: list[tuple[int, int]]) -> list[int]:
 class TecomState:
     last_event: str | None = None
     inputs: dict[int, bool] = None
+    input_words: dict[int, int] = None
     relays: dict[int, bool] = None
     doors: dict[int, str] = None
     areas: dict[int, str] = None
@@ -151,6 +152,7 @@ class TecomState:
 
     def __post_init__(self):
         self.inputs = self.inputs or {}
+        self.input_words = self.input_words or {}
         self.relays = self.relays or {}
         self.doors = self.doors or {}
         self.areas = self.areas or {}
@@ -1059,6 +1061,7 @@ class TecomHub:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
                     inp = start + i
+                    self.state.input_words[inp] = int(s)
                     self.state.inputs[inp] = (not bool(s & 0x20))  # 0x20 appears to mean SEALED/NORMAL
                 self.state.last_event = f"Inputs {start}-{start+len(statuses)-1}"
                 self._notify()
