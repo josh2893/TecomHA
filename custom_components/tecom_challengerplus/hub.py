@@ -378,6 +378,37 @@ class TecomHub:
                 return f"{prefix} - {name}"
         return default
 
+    def decode_input_status(self, raw: int | None) -> tuple[bool | None, str]:
+        """Decode a polled input status byte into an on/off state.
+
+        Challenger inputs appear to use more than one status pattern. The legacy
+        integration treated bit 0x20 as the sealed/restored bit. Recent live
+        captures showed another common pattern where the distinguishing change
+        between open/unsealed and sealed is bit 0x40 instead:
+            0x23 = Unsealed, Open state
+            0x63 = Sealed
+        In both of those, 0x20 stays set.
+
+        To avoid breaking currently-working inputs, keep the existing 0x20 logic
+        as the default and only switch to the 0x40-based interpretation for the
+        common low-bit pattern (0x03) seen on the open-loop/open-state style
+        points.
+        """
+
+        if raw is None:
+            return None, "event_only"
+
+        raw = int(raw) & 0xFF
+        legacy_state = not bool(raw & 0x20)
+
+        # Hybrid open-state handling. This keeps existing inputs behaving as
+        # before, while allowing reed/open-loop points like the front gate reed
+        # to report ON when 0x40 clears even though 0x20 remains set.
+        if (raw & 0x03) == 0x03:
+            return (not bool(raw & 0x40)), "raw_status_hybrid_bit_0x40"
+
+        return legacy_state, "raw_status_bit_0x20"
+
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
         if self._seq_out == 0:
@@ -1061,8 +1092,10 @@ class TecomHub:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
                     inp = start + i
-                    self.state.input_words[inp] = int(s)
-                    self.state.inputs[inp] = (not bool(s & 0x20))  # 0x20 appears to mean SEALED/NORMAL
+                    raw_status = int(s)
+                    self.state.input_words[inp] = raw_status
+                    decoded_state, _derived_from = self.decode_input_status(raw_status)
+                    self.state.inputs[inp] = decoded_state
                 self.state.last_event = f"Inputs {start}-{start+len(statuses)-1}"
                 self._notify()
                 return

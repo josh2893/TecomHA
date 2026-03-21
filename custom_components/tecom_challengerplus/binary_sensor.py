@@ -54,12 +54,20 @@ class TecomInputBinarySensor(BinarySensorEntity):
 
     @property
     def is_on(self):
+        raw = getattr(self._hub.state, "input_words", {}).get(self._number)
+        if raw is not None:
+            decoded_state, _derived_from = self._hub.decode_input_status(raw)
+            return decoded_state
         return self._hub.state.inputs.get(self._number)
 
     @property
     def extra_state_attributes(self):
-        state = self._hub.state.inputs.get(self._number)
         raw = getattr(self._hub.state, "input_words", {}).get(self._number)
+        if raw is not None:
+            state, derived_from = self._hub.decode_input_status(raw)
+        else:
+            state = self._hub.state.inputs.get(self._number)
+            derived_from = "event_only"
         attrs = {
             "input_state": state,
             "last_event": getattr(self._hub.state, "last_event", None),
@@ -78,11 +86,11 @@ class TecomInputBinarySensor(BinarySensorEntity):
                     "bit_0x20_sealed": bool(raw & 0x20),
                     "bit_0x40_set": bool(raw & 0x40),
                     "bit_0x80_set": bool(raw & 0x80),
-                    "state_derived_from": "raw_status_bit_0x20",
+                    "state_derived_from": derived_from,
                 }
             )
         else:
-            attrs["state_derived_from"] = "event_only"
+            attrs["state_derived_from"] = derived_from
         return attrs
 
 
