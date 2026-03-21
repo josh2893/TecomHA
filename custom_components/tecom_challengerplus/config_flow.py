@@ -270,7 +270,7 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_SEND_ACKS, default=bool(defaults.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))): selector.BooleanSelector(),
             vol.Optional(CONF_SEND_HEARTBEATS, default=bool(defaults.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))): selector.BooleanSelector(),
             vol.Optional(CONF_HEARTBEAT_INTERVAL, default=int(defaults.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=60, mode=selector.NumberSelectorMode.BOX)
+                selector.NumberSelectorConfig(min=1, max=300, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_MIN_SEND_INTERVAL_MS, default=int(defaults.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=500, mode=selector.NumberSelectorMode.BOX)

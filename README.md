@@ -9,8 +9,11 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.0.2 highlights
+## Version 3.0.4 highlights
 
+- Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
+- Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
+- Debug dumps now show whether idle full sync is enabled so it is easy to confirm the quieter CTPlus-style runtime is active.
 - New **session quiet-mode recovery** for CTPlus-style comms path protection.
   - When the same queued panel event is retried repeatedly, the integration now stops host-initiated recalls for a while and leaves only heartbeats + immediate event ACKs running.
   - This is designed to mimic CTPlus/ARES behaviour more closely when the panel is under retry pressure.
@@ -514,3 +517,10 @@ Use it carefully, test thoroughly, and treat it as an evolving integration rathe
 - Relay switch entities are now grouped under the Tecom device in Home Assistant.
 - Relay switch entities now expose basic debug attributes.
 - Door lock entities now expose richer debug attributes and prefer explicit lock/secure events over the raw door word when available.
+
+
+## v3.0.4 notes
+
+- CTPlus-style quiet idle behaviour by default: 60-second heartbeats and broad safety sync instead of continuous polling.
+- Automatic UDP transport/session rebuild if repeated panel retries continue during quiet mode.
+- Door lock entities restore their last known state after Home Assistant reloads.

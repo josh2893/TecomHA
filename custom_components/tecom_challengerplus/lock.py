@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.components.lock import LockEntity, LockEntityFeature
 
 from .const import DOMAIN
@@ -32,7 +33,7 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 
-class TecomDoorLock(LockEntity):
+class TecomDoorLock(LockEntity, RestoreEntity):
     _attr_has_entity_name = True
     _attr_icon = "mdi:door"
     _attr_supported_features = LockEntityFeature.OPEN
@@ -45,7 +46,19 @@ class TecomDoorLock(LockEntity):
         self._unsub = None
 
     async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         self._unsub = self._hub.add_listener(self.async_write_ha_state)
+        last_state = await self.async_get_last_state()
+        if last_state is None:
+            return
+        if self._door not in getattr(self._hub.state, "door_lock", {}):
+            attrs = dict(last_state.attributes or {})
+            lock_state = attrs.get("lock_state")
+            secure_state = attrs.get("secure_state")
+            if lock_state in ("locked", "auto_locked", "unlocked", "auto_unlocked"):
+                self._hub.state.door_lock[self._door] = lock_state
+            elif secure_state in ("secured", "unsecured"):
+                self._hub.state.door_secure[self._door] = secure_state
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:

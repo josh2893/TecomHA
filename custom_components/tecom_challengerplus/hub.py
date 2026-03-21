@@ -61,6 +61,7 @@ from .const import (
     CONF_PANEL_EXPORT_RENAME_RASES,
     DEFAULT_INPUT_MAPPING_MODE,
     DEFAULT_SEND_ACKS,
+    DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
@@ -185,12 +186,13 @@ class TecomHub:
         self.listen_port: int = int(cfg.get(CONF_LISTEN_PORT))
         self.bind_host: str = cfg.get(CONF_BIND_HOST, "0.0.0.0")
         self.tcp_role: str = cfg.get(CONF_TCP_ROLE, TCP_ROLE_CLIENT)
-        self.poll_interval: int = int(cfg.get(CONF_POLL_INTERVAL, 10))
+        self.poll_interval: int = int(cfg.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))
 
         # Diagnostics / tuning options (Options Flow).
         self.send_acks: bool = bool(cfg.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))
         self.send_heartbeats: bool = bool(cfg.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))
-        self.heartbeat_interval: int = int(cfg.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+        _configured_heartbeat = int(cfg.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+        self.heartbeat_interval: int = max(60, _configured_heartbeat) if self.mode == MODE_CTPLUS else _configured_heartbeat
         self.min_send_interval_ms: int = int(cfg.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))
         self.door_status_mode: str = str(cfg.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE) or DEFAULT_DOOR_STATUS_MODE)
         self.door_status_per_cycle: int = int(cfg.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))
@@ -325,7 +327,18 @@ class TecomHub:
         self._quiet_reinit_pending: bool = False
         self._last_panel_event_seq: int | None = None
         self._panel_retry_event_threshold: int = 3
-        self._quiet_mode_seconds: float = max(90.0, float(self.poll_interval) * 3.0)
+        self._quiet_mode_seconds: float = max(120.0, float(self.poll_interval) * 0.25)
+        # CTPlus idle captures show a one-shot startup/state bootstrap followed by very
+        # quiet event-driven runtime behaviour. Mirror that here: do one broad sync after
+        # backlog drain / reconnect, then stop routine full polling and rely on live events.
+        # Manual full sync and reconnect recovery still reuse the same initial sync helper.
+        self._idle_full_sync_enabled: bool = False if self.mode == MODE_CTPLUS else True
+        self._idle_full_sync_interval: float = max(float(self.poll_interval), 900.0) if self._idle_full_sync_enabled else 0.0
+        self._next_idle_full_sync_monotonic: float = 0.0
+        self._transport_restart_pending: bool = False
+        self._transport_restart_reason: str | None = None
+        self._last_transport_restart_monotonic: float = 0.0
+        self._transport_restart_cooldown: float = 180.0
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -493,6 +506,21 @@ class TecomHub:
         })
         self._notify()
 
+    def _schedule_transport_restart(self, reason: str) -> None:
+        now = asyncio.get_running_loop().time()
+        if (now - self._last_transport_restart_monotonic) < self._transport_restart_cooldown:
+            return
+        self._transport_restart_pending = True
+        self._transport_restart_reason = reason
+        self._quiet_reinit_pending = False
+        self._debug_frames.append({
+            'ts': time.time(),
+            'dir': 'note',
+            'peer': str(self._udp_last_peer),
+            'hex': '',
+            'note': f'transport_restart_pending:{reason}',
+        })
+
     async def async_start(self) -> None:
         """Start transport and register services."""
         if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
@@ -596,6 +624,32 @@ class TecomHub:
         await self._transport_obj.async_start()
         _LOGGER.info("Started Tecom CTPlus transport (%s/%s)", self.transport, self.tcp_role)
 
+    async def _async_restart_transport_session(self, reason: str) -> None:
+        """Rebuild the transport/session when the panel queue stays wedged."""
+        self._transport_restart_pending = False
+        self._transport_restart_reason = None
+        self._last_transport_restart_monotonic = asyncio.get_running_loop().time()
+        self._cancel_pending_refresh_tasks()
+        self._clear_door_lock_runtime_state()
+        self._notify()
+        self._debug_frames.append({
+            'ts': time.time(),
+            'dir': 'note',
+            'peer': str(self._udp_last_peer),
+            'hex': '',
+            'note': f'transport_restart:{reason}',
+        })
+        try:
+            if self._transport_obj is not None:
+                await self._transport_obj.async_stop()
+        except Exception:
+            _LOGGER.debug("Transport stop during restart failed", exc_info=True)
+        self._transport_obj = None
+        await asyncio.sleep(max(1.0, self._min_send_interval * 8.0))
+        await self._start_transport()
+        await asyncio.sleep(max(0.5, self._min_send_interval * 4.0))
+        await self.async_reinitialize_session(log_errors=False)
+
     def _register_services(self) -> None:
         async def async_send_raw(call):
             hex_str = (call.data.get("hex") or "").replace(" ", "")
@@ -659,7 +713,7 @@ class TecomHub:
             type_offset = self._type_offset
         await self._send_frame_paced(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=type_offset))
     async def _heartbeat_loop(self) -> None:
-        """Send CTPlus keepalive frequently so panel does not declare path down."""
+        """Send CTPlus keepalive at a CTPlus-like cadence while idle."""
         while True:
             try:
                 if not self.send_heartbeats:
@@ -680,9 +734,15 @@ class TecomHub:
     async def _poll_loop(self) -> None:
         while True:
             try:
-                # When the panel is actively streaming queued events, back off host-initiated
-                # polling briefly so we do not occupy the command queue and starve event delivery.
                 now = asyncio.get_running_loop().time()
+
+                if self._transport_restart_pending:
+                    try:
+                        await self._async_restart_transport_session(self._transport_restart_reason or "stuck_panel_queue")
+                    except Exception:
+                        _LOGGER.debug("Transport/session restart failed (will retry)", exc_info=True)
+                    await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
+                    continue
 
                 if now < self._quiet_mode_until:
                     await asyncio.sleep(min(1.0, self._quiet_mode_until - now))
@@ -713,32 +773,36 @@ class TecomHub:
                         _LOGGER.debug("Initial sync after backlog drain failed (will retry)", exc_info=True)
                     else:
                         self._startup_backlog_drain = False
-                    await asyncio.sleep(self.poll_interval)
+                        if self._idle_full_sync_enabled:
+                            self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+                        else:
+                            self._next_idle_full_sync_monotonic = 0.0
+                    await asyncio.sleep(5.0)
                     continue
 
                 if now < self._poll_backoff_until:
                     await asyncio.sleep(min(0.5, self._poll_backoff_until - now))
                     continue
 
-                # Poll first, then sleep (so state updates quickly after reload/startup).
-                if getattr(self, 'input_poll_ranges', None):
-                    for rs, re_ in self.input_poll_ranges:
-                        await self.async_request_inputs(rs, re_)
+                if not self._idle_full_sync_enabled:
+                    await asyncio.sleep(5.0)
+                    continue
 
-                if getattr(self, 'relay_poll_ranges', None):
-                    for rs, re_ in self.relay_poll_ranges:
-                        await self.async_request_relays(rs, re_)
+                if now < self._next_idle_full_sync_monotonic:
+                    await asyncio.sleep(min(5.0, self._next_idle_full_sync_monotonic - now))
+                    continue
 
-                if getattr(self, 'areas_count', 0) and self.areas_count > 0:
-                    await self.async_request_areas(1, self.areas_count)
-                if getattr(self, 'ras_door_ids', None):
-                    for ras in self.ras_door_ids:
-                        await self._send_command(proto.cmd_request_ras_status(ras))
+                try:
+                    await self._async_initial_sync()
+                except Exception:
+                    _LOGGER.debug("Idle safety sync failed (will retry)", exc_info=True)
+                finally:
+                    if self._idle_full_sync_enabled:
+                        self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+                    else:
+                        self._next_idle_full_sync_monotonic = 0.0
 
-                if not getattr(self, "door_poll_startup_only", False):
-                    await self.async_request_doors()
-
-                await asyncio.sleep(self.poll_interval)
+                await asyncio.sleep(min(5.0, self._idle_full_sync_interval if self._idle_full_sync_enabled else 5.0))
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -800,6 +864,11 @@ class TecomHub:
             await self._async_startup_door_sweep()
         else:
             await self.async_request_doors(force_all=True)
+
+        if self._idle_full_sync_enabled:
+            self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+        else:
+            self._next_idle_full_sync_monotonic = 0.0
 
     async def _async_startup_door_sweep(self) -> None:
         """Populate DGP door states once at startup without relying on later polling.
@@ -1267,7 +1336,11 @@ class TecomHub:
                 if repeat_count >= self._panel_retry_event_threshold:
                     self._enter_quiet_mode(
                         f"repeated panel event retries for code 0x{code:02X} object {obj}",
-                        duration=max(90.0, float(self.poll_interval) * 3.0),
+                        duration=max(90.0, self._quiet_mode_seconds),
+                    )
+                if self._in_quiet_mode() and repeat_count >= (self._panel_retry_event_threshold + 3):
+                    self._schedule_transport_restart(
+                        f"panel_retry_storm_code_0x{code:02X}_object_{obj}"
                     )
                 if repeat_count > 1:
                     self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
@@ -1278,12 +1351,10 @@ class TecomHub:
                     mapped = self._input_event_state(code)
                     if mapped is not None:
                         self.state.inputs[obj] = mapped
-                    self._schedule_input_status_refresh(obj)
                 elif code == 0x97:
                     mapped = self._input_event_state(code)
                     if mapped is not None:
                         self.state.inputs[obj] = mapped
-                    self._schedule_input_status_refresh(obj)
                 elif code == 0x84:
                     self.state.relays[obj] = True
                 elif code == 0x85:
@@ -1300,34 +1371,29 @@ class TecomHub:
                     self.state.door_words[obj] = 1
                     self.state.doors[obj] = "open"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0xA6:
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0xAF:
                     # "Secured" is a lock/secure-state event, not necessarily a contact-close event.
                     self.state.door_secure[obj] = "secured"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0xAE:
                     self.state.door_secure[obj] = "unsecured"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x86:
                     self.state.door_lock[obj] = "unlocked"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x87:
                     self.state.door_lock[obj] = "locked"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x88:
                     self.state.door_lock[obj] = "auto_unlocked"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x89:
                     self.state.door_lock[obj] = "auto_locked"
-                    self._schedule_door_status_refresh(obj)
                 elif code in (0x92, 0x9D, 0xA7, 0xA8, 0xA9, 0xAA):
-                    self._schedule_door_status_refresh(obj)
+                    pass
 
+                # Keep runtime event handling quiet and event-driven like CTPlus.
+                # We intentionally do not chain a targeted status refresh or global
+                # retrieve-events command after normal unsolicited events.
                 # Do not automatically fire the global "Retrieve events" command here:
                 # captures show that command is useful as a manual recovery tool, but when
                 # injected into normal event flow on path 3 it causes "path event reset"
@@ -1373,6 +1439,9 @@ class TecomHub:
                     "door_status_mode": self.door_status_mode,
                     "door_status_per_cycle": self.door_status_per_cycle,
                     "door_poll_startup_only": getattr(self, "door_poll_startup_only", False),
+                    "send_acks": self.send_acks,
+                    "send_heartbeats": self.send_heartbeats,
+                    "heartbeat_interval": self.heartbeat_interval,
                     "min_send_interval_ms": self.min_send_interval_ms,
                     "dgp_door_ids": list(self.dgp_door_ids),
                     "ras_door_ids": list(self.ras_door_ids),
@@ -1382,6 +1451,11 @@ class TecomHub:
                     "quiet_mode_until": self._quiet_mode_until,
                     "quiet_reason": self._quiet_reason,
                     "quiet_reinit_pending": self._quiet_reinit_pending,
+                    "idle_full_sync_enabled": self._idle_full_sync_enabled,
+                    "idle_full_sync_interval": self._idle_full_sync_interval,
+                    "next_idle_full_sync_monotonic": self._next_idle_full_sync_monotonic,
+                    "transport_restart_pending": self._transport_restart_pending,
+                    "transport_restart_reason": self._transport_restart_reason,
                 },
                 "state": {
                     "last_event": self.state.last_event,
@@ -1456,6 +1530,10 @@ class TecomHub:
         self._startup_backlog_drain = True
         self._quiet_mode_until = 0.0
         self._quiet_reason = None
+        if self._idle_full_sync_enabled:
+            self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+        else:
+            self._next_idle_full_sync_monotonic = 0.0
 
     # -------------------------
     # Control helpers
