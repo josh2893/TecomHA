@@ -18,9 +18,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         entities.append(TecomInputBinarySensor(hub, i))
 
 
-    # DGP door contacts.
-    for door in getattr(hub, 'dgp_door_ids', []):
-        entities.append(TecomDoorContactBinarySensor(hub, door))
+    # DGP door contact entities are intentionally not created in 3.0.5.
+    # The physical reed/input sensors are the preferred source of truth for
+    # open/closed state, while the door lock entity is kept for release/control.
 
     # RAS / keypad / simple controller contact-style entities.
     for ras in getattr(hub, 'ras_door_ids', []):

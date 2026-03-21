@@ -133,7 +133,7 @@ class TecomDoorLock(LockEntity, RestoreEntity):
         secure_state = getattr(self._hub.state, "door_secure", {}).get(self._door)
         if secure_state in ("secured", "unsecured"):
             return f"door_secure:{secure_state}"
-        return "explicit_event_pending"
+        return "startup_bootstrap_or_explicit_event_pending"
 
 
 class TecomRasDoorLock(LockEntity):

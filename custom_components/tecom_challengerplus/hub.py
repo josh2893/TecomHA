@@ -963,6 +963,33 @@ class TecomHub:
         contact-focused here. Raw words are still preserved separately for diagnostics/UI.
         """
         return "open" if (status & 0x0080) else "closed"
+
+    def _bootstrap_door_access_state_from_status(self, door: int, status: int) -> None:
+        """Populate an initial best-effort door secure state from a polled word.
+
+        CTPlus clearly performs a startup bootstrap so the UI does not come up blank. We still
+        do *not* want to mirror the reed/contact state into the lock entity during runtime.
+        So this bootstrap is deliberately conservative:
+
+        - only run when we do not already have an explicit secure/lock event for the door
+        - only infer state for *closed* doors
+        - closed words with bit 0x0010 set are treated as released/unsecured
+        - closed words without bit 0x0010 are treated as secure/locked
+
+        As soon as explicit CTPlus secure/lock events arrive, they take precedence.
+        """
+        if self.state.door_lock.get(door) in ("locked", "auto_locked", "unlocked", "auto_unlocked"):
+            return
+        if self.state.door_secure.get(door) in ("secured", "unsecured"):
+            return
+
+        if self._decode_door_contact_state(status) != "closed":
+            return
+
+        if status & 0x0010:
+            self.state.door_secure[door] = "unsecured"
+        else:
+            self.state.door_secure[door] = "secured"
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -1301,6 +1328,7 @@ class TecomHub:
                         return
                 self.state.door_words[door] = status
                 self.state.doors[door] = decoded
+                self._bootstrap_door_access_state_from_status(door, status)
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
@@ -1497,11 +1525,12 @@ class TecomHub:
         await self._send_command(proto.cmd_retrieve_events())
 
     def _clear_door_lock_runtime_state(self) -> None:
-        """Drop cached door lock/secure state before a new CTPlus session init.
+        """Drop cached door lock/secure state when explicitly requested.
 
-        Contact/reed state is kept separately in door_words/doors. This prevents stale
-        secure/unlock events from a previous session being reused after reconnect or a
-        manual reinitialisation.
+        In 3.0.5 we preserve the last known door secure/lock state across a reconnect so the
+        lock entities do not come up blank while the startup door sweep repopulates status.
+        Explicit CTPlus secure/lock events still override this cached state as soon as they
+        arrive.
         """
         self.state.door_secure.clear()
         self.state.door_lock.clear()
@@ -1509,7 +1538,8 @@ class TecomHub:
     async def async_reinitialize_session(self, log_errors: bool = True) -> None:
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Session reinitialisation requires CTPlus mode")
-        self._clear_door_lock_runtime_state()
+        # Keep the last known door secure/lock state through reconnect so entities do
+        # not render as unknown while the slow startup door sweep repopulates polled status.
         self._notify()
         try:
             await self._send_command(proto.cmd_session_hello(), bypass_quiet=True)
