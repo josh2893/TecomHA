@@ -9,6 +9,25 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
+## Version 3.0.0 highlights
+
+- CTPlus-style **session reinitialisation** with paced hello / params / door-status init
+- **Immediate ACK support on both UDP and TCP** transports
+- Better **TCP client reconnect** behaviour
+- Official CTPlus-style default input mapping:
+  - `0x96 = Unsealed = on`
+  - `0x97 = Sealed = off`
+  - status byte `0x20 = sealed / normal`
+- New selectable **input mapping mode** options for panels that behaved differently in earlier 2.x builds
+- New services:
+  - `tecom_challengerplus.request_full_sync`
+  - `tecom_challengerplus.retrieve_events`
+  - `tecom_challengerplus.reinitialize_session`
+- RAS / keypad door contacts can now be surfaced as binary sensors when configured
+- Expanded debug / last-event metadata for troubleshooting
+
+---
+
 ## Current status
 
 ### Working well

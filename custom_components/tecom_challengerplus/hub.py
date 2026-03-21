@@ -42,6 +42,10 @@ from .const import (
     CONF_AREAS_COUNT,
     CONF_ENCRYPTION_TYPE,
     CONF_INPUT_RANGES,
+    CONF_INPUT_MAPPING_MODE,
+    INPUT_MAPPING_CTPLUS,
+    INPUT_MAPPING_LEGACY_INVERTED,
+    INPUT_MAPPING_STATUS_ONLY,
     CONF_SEND_ACKS,
     CONF_SEND_HEARTBEATS,
     CONF_HEARTBEAT_INTERVAL,
@@ -55,6 +59,7 @@ from .const import (
     CONF_PANEL_EXPORT_RENAME_DOORS,
     CONF_PANEL_EXPORT_RENAME_RELAYS,
     CONF_PANEL_EXPORT_RENAME_RASES,
+    DEFAULT_INPUT_MAPPING_MODE,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -139,6 +144,9 @@ def expand_ranges(ranges: list[tuple[int, int]]) -> list[int]:
 @dataclass
 class TecomState:
     last_event: str | None = None
+    last_event_code: int | None = None
+    last_event_object: int | None = None
+    last_event_raw: str | None = None
     inputs: dict[int, bool] = None
     input_words: dict[int, int] = None
     relays: dict[int, bool] = None
@@ -211,6 +219,7 @@ class TecomHub:
             self.input_poll_ranges = [(1, self.inputs_count)] if self.inputs_count > 0 else []
             self.input_ids = list(range(1, self.inputs_count + 1)) if self.inputs_count > 0 else []
             self.inputs_max = self.inputs_count
+        self.input_mapping_mode: str = str(cfg.get(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE) or DEFAULT_INPUT_MAPPING_MODE)
 
         self.relays_count = int(cfg.get(CONF_RELAYS_COUNT, 0))
         # Relay numbering can be non-contiguous; relay_ranges overrides relays_count when set.
@@ -378,42 +387,51 @@ class TecomHub:
                 return f"{prefix} - {name}"
         return default
 
-    def decode_input_status(self, raw: int | None) -> tuple[bool | None, str]:
-        """Decode a polled input status byte into an on/off state.
-
-        Challenger inputs appear to use more than one status pattern. The legacy
-        integration treated bit 0x20 as the sealed/restored bit. Recent live
-        captures showed another common pattern where the distinguishing change
-        between open/unsealed and sealed is bit 0x40 instead:
-            0x23 = Unsealed, Open state
-            0x63 = Sealed
-        In both of those, 0x20 stays set.
-
-        To avoid breaking currently-working inputs, keep the existing 0x20 logic
-        as the default and only switch to the 0x40-based interpretation for the
-        common low-bit pattern (0x03) seen on the open-loop/open-state style
-        points.
-        """
-
-        if raw is None:
-            return None, "event_only"
-
-        raw = int(raw) & 0xFF
-        legacy_state = not bool(raw & 0x20)
-
-        # Hybrid open-state handling. This keeps existing inputs behaving as
-        # before, while allowing reed/open-loop points like the front gate reed
-        # to report ON when 0x40 clears even though 0x20 remains set.
-        if (raw & 0x03) == 0x03:
-            return (not bool(raw & 0x40)), "raw_status_hybrid_bit_0x40"
-
-        return legacy_state, "raw_status_bit_0x20"
-
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
         if self._seq_out == 0:
             self._seq_out = 1
         return self._seq_out
+
+    def _input_state_from_status(self, raw: int) -> bool:
+        """Return HA boolean state from an input status byte.
+
+        CTPlus event/status material consistently points to bit 0x20 meaning the input is
+        sealed/normal. In HA we surface inputs as ON when active/tripped, so sealed maps to
+        OFF and unsealed maps to ON.
+        """
+        return not bool(int(raw) & 0x20)
+
+    def _input_event_state(self, code: int) -> bool | None:
+        """Return HA boolean state for input event codes 0x96/0x97.
+
+        Modes:
+          - ctplus: 0x96=Unsealed/ON, 0x97=Sealed/OFF
+          - legacy_inverted: preserve older 2.x behaviour
+          - status_only: do not trust event polarity; wait for targeted status refresh
+        """
+        if self.input_mapping_mode == INPUT_MAPPING_STATUS_ONLY:
+            return None
+        if self.input_mapping_mode == INPUT_MAPPING_LEGACY_INVERTED:
+            if code == 0x96:
+                return False
+            if code == 0x97:
+                return True
+            return None
+        if code == 0x96:
+            return True
+        if code == 0x97:
+            return False
+        return None
+
+    def input_state_source(self, number: int) -> str:
+        raw = self.state.input_words.get(number)
+        if raw is not None:
+            return "raw_status_bit_0x20"
+        if self.input_mapping_mode == INPUT_MAPPING_STATUS_ONLY:
+            return "event_refresh_pending"
+        return f"event_mapping:{self.input_mapping_mode}"
+
 
     def add_listener(self, cb: UpdateCallback) -> Callable[[], None]:
         self._listeners.add(cb)
@@ -439,24 +457,9 @@ class TecomHub:
             )
 
         await self._start_transport()
-        self._register_services()
 
         if self.mode == MODE_CTPLUS:
-            # CTPlus session init (observed in CTPlus login capture). Without this, some ports
-            # can appear to "do nothing" until a CTPlus client connects once.
-            try:
-                await self._send_command(proto.cmd_session_hello())
-                await self._send_command(proto.cmd_session_params())
-            except Exception:
-                _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
-
-            # Door status init can be required before per-door status requests.
-            if getattr(self, 'dgp_door_ids', None) and not self._door_status_inited:
-                try:
-                    await self._send_command(proto.cmd_door_status_init())
-                    self._door_status_inited = True
-                except Exception:
-                    _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
+            await self.async_reinitialize_session(log_errors=False)
 
             # Start heartbeats immediately so the panel keeps the path alive, but hold
             # broad polling until queued events have had a chance to drain first.
@@ -708,8 +711,9 @@ class TecomHub:
         So for startup-only mode we do a few paced passes over the still-unknown DGP doors until
         they populate or we hit a small retry limit.
         """
-        if self.inputs_count > 0:
-            await self.async_request_inputs(1, self.inputs_count)
+        if getattr(self, "input_poll_ranges", None):
+            for rs, re_ in self.input_poll_ranges:
+                await self.async_request_inputs(rs, re_)
 
         if getattr(self, "relay_poll_ranges", None):
             for rs, re_ in self.relay_poll_ranges:
@@ -910,30 +914,30 @@ class TecomHub:
     def _send_panel_ack_immediate(self, fr: proto.Frame) -> None:
         """Send a panel ACK immediately for unsolicited 0x40 frames.
 
-        Using create_task() here proved too soft under load; for UDP we want the ACK
-        on the wire as quickly as possible so the panel clears its event queue instead
-        of retransmitting the same access/door event every poll cycle.
+        CTPlus/ARES expect these ACKs to go out as quickly as possible so the panel
+        retires the current queue item and keeps the comms path flowing. This applies
+        to both UDP and TCP transports.
         """
-        if not self.send_acks or self._udp_last_peer is None:
+        if not self.send_acks:
             return
         payload = proto.build_ack(
             fr.seq,
-            # CTPlus mirrors the incoming FF-marker on ACKs for FF-form panel events.
-            # Without this, some queued events (notably repeated/stuck alarm/access items)
-            # are accepted by HA but never retired from the panel queue.
             has_ff=getattr(fr, 'has_ff', False),
             type_offset=getattr(fr, 'type_offset', self._type_offset),
         ).to_bytes()
-        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex(), 'note': 'panel_ack'})
+        peer = self._udp_last_peer
+        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(peer), 'hex': payload.hex(), 'note': 'panel_ack'})
         try:
-            if hasattr(self._transport_obj, 'sendto_nowait'):
-                self._transport_obj.sendto_nowait(payload, self._udp_last_peer)
+            if peer is not None and hasattr(self._transport_obj, 'sendto_nowait'):
+                self._transport_obj.sendto_nowait(payload, peer)
+                return
+            if hasattr(self._transport_obj, 'send_nowait'):
+                self._transport_obj.send_nowait(payload)
                 return
         except Exception as err:  # pragma: no cover - defensive logging
-            _LOGGER.debug("Immediate UDP ACK failed, falling back to async send: %s", err)
+            _LOGGER.debug("Immediate panel ACK failed, falling back to async send: %s", err)
 
-        # Fallback for non-UDP / unusual transport objects.
-        asyncio.create_task(self.async_send_bytes(payload, addr=self._udp_last_peer))
+        asyncio.create_task(self.async_send_bytes(payload, addr=peer if peer is not None else None))
 
 
 
@@ -1092,10 +1096,8 @@ class TecomHub:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
                     inp = start + i
-                    raw_status = int(s)
-                    self.state.input_words[inp] = raw_status
-                    decoded_state, _derived_from = self.decode_input_status(raw_status)
-                    self.state.inputs[inp] = decoded_state
+                    self.state.input_words[inp] = int(s)
+                    self.state.inputs[inp] = self._input_state_from_status(int(s))
                 self.state.last_event = f"Inputs {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
@@ -1187,10 +1189,14 @@ class TecomHub:
                     return
 
                 if code == 0x96:
-                    self.state.inputs[obj] = False
+                    mapped = self._input_event_state(code)
+                    if mapped is not None:
+                        self.state.inputs[obj] = mapped
                     self._schedule_input_status_refresh(obj)
                 elif code == 0x97:
-                    self.state.inputs[obj] = True
+                    mapped = self._input_event_state(code)
+                    if mapped is not None:
+                        self.state.inputs[obj] = mapped
                     self._schedule_input_status_refresh(obj)
                 elif code == 0x84:
                     self.state.relays[obj] = True
@@ -1243,6 +1249,9 @@ class TecomHub:
                 self._last_retrieve_events_key = None
 
                 self.state.last_event = payload.get('text') or payload.get('message')
+                self.state.last_event_code = code
+                self.state.last_event_object = obj
+                self.state.last_event_raw = payload.get('raw')
                 self.hass.bus.async_fire(f"{DOMAIN}_event", payload)
                 # Extra event name to make filtering easier in HA
                 self.hass.bus.async_fire(f"{DOMAIN}_ctplus_event", payload)
@@ -1283,9 +1292,13 @@ class TecomHub:
                     "ras_door_ids": list(self.ras_door_ids),
                     "input_ids": list(self.input_ids),
                     "areas_count": self.areas_count,
+                    "input_mapping_mode": self.input_mapping_mode,
                 },
                 "state": {
                     "last_event": self.state.last_event,
+                    "last_event_code": self.state.last_event_code,
+                    "last_event_object": self.state.last_event_object,
+                    "last_event_raw": self.state.last_event_raw,
                     "inputs": dict(self.state.inputs),
                     "relays": dict(self.state.relays),
                     "doors": dict(self.state.doors),
@@ -1307,6 +1320,37 @@ class TecomHub:
         except Exception:
             _LOGGER.exception("Failed to write debug dump")
             return ""
+
+    async def async_request_full_sync(self) -> None:
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Full sync requires CTPlus mode")
+        await self._async_initial_sync()
+
+    async def async_retrieve_events(self) -> None:
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Retrieve events requires CTPlus mode")
+        await self._send_command(proto.cmd_retrieve_events())
+
+    async def async_reinitialize_session(self, log_errors: bool = True) -> None:
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Session reinitialisation requires CTPlus mode")
+        try:
+            await self._send_command(proto.cmd_session_hello())
+            await asyncio.sleep(max(0.15, self._min_send_interval * 2.0))
+            await self._send_command(proto.cmd_session_params())
+            await asyncio.sleep(max(0.15, self._min_send_interval * 2.0))
+            if getattr(self, 'dgp_door_ids', None):
+                await self._send_command(proto.cmd_door_status_init())
+                self._door_status_inited = True
+        except Exception:
+            if log_errors:
+                _LOGGER.debug("CTPlus session init failed", exc_info=True)
+            return
+
+        now = asyncio.get_running_loop().time()
+        self._startup_backlog_started_monotonic = now
+        self._last_unsolicited_event_monotonic = now
+        self._startup_backlog_drain = True
 
     # -------------------------
     # Control helpers

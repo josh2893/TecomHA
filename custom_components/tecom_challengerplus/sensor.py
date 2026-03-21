@@ -34,3 +34,15 @@ class TecomLastEventSensor(Entity):
     @property
     def native_value(self):
         return self._hub.state.last_event
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "last_event_code": getattr(self._hub.state, "last_event_code", None),
+            "last_event_object": getattr(self._hub.state, "last_event_object", None),
+            "last_event_raw": getattr(self._hub.state, "last_event_raw", None),
+            "input_mapping_mode": getattr(self._hub, "input_mapping_mode", None),
+            "type_offset": getattr(self._hub, "_type_offset", None),
+            "type_offset_known": getattr(self._hub, "_type_offset_known", False),
+            "door_status_inited": getattr(self._hub, "_door_status_inited", False),
+        }

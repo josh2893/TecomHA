@@ -57,6 +57,11 @@ CONF_RELAY_RANGES = "relay_ranges"  # e.g. "1-16,21-24,49-56"
 
 # Advanced / diagnostics options (Options Flow)
 CONF_INPUT_RANGES = "input_ranges"  # e.g. "1-16,21-24,49-56" (overrides inputs_count when set)
+CONF_INPUT_MAPPING_MODE = "input_mapping_mode"
+INPUT_MAPPING_CTPLUS = "ctplus"
+INPUT_MAPPING_LEGACY_INVERTED = "legacy_inverted"
+INPUT_MAPPING_STATUS_ONLY = "status_only"
+DEFAULT_INPUT_MAPPING_MODE = INPUT_MAPPING_CTPLUS
 
 CONF_SEND_ACKS = "send_acks"
 CONF_SEND_HEARTBEATS = "send_heartbeats"

@@ -9,12 +9,12 @@ _EVENTTABLE_FILE = Path(__file__).with_name("ctplus_eventtable.tsv")
 # Hand-confirmed overrides from supplied captures / CTPlus UI. These take precedence
 # over the bundled eventtable where field naming in the table is ambiguous for live UI.
 _CONFIRMED_TEXT = {
-    0x0B: "Armed",
-    0x0C: "Disarmed",
+    0x0B: "Secured",
+    0x0C: "Accessed",
     0x84: "On",
     0x85: "Off",
-    0x96: "Sealed",
-    0x97: "Unsealed",
+    0x96: "Unsealed",
+    0x97: "Sealed",
     0xA5: "Open",
     0xA6: "Closed",
     0xA7: "Forced",

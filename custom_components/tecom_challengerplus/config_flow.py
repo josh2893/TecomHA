@@ -45,6 +45,10 @@ from .const import (
     CONF_RAS_DOOR_RANGES,
     CONF_RELAY_RANGES,
     CONF_INPUT_RANGES,
+    CONF_INPUT_MAPPING_MODE,
+    INPUT_MAPPING_CTPLUS,
+    INPUT_MAPPING_LEGACY_INVERTED,
+    INPUT_MAPPING_STATUS_ONLY,
     CONF_SEND_ACKS,
     CONF_SEND_HEARTBEATS,
     CONF_HEARTBEAT_INTERVAL,
@@ -58,6 +62,7 @@ from .const import (
     CONF_PANEL_EXPORT_RENAME_DOORS,
     CONF_PANEL_EXPORT_RENAME_RELAYS,
     CONF_PANEL_EXPORT_RENAME_RASES,
+    DEFAULT_INPUT_MAPPING_MODE,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -129,6 +134,18 @@ DOOR_STATUS_MODE_SELECTOR = selector.SelectSelector(
         mode=selector.SelectSelectorMode.DROPDOWN,
     )
 )
+
+INPUT_MAPPING_MODE_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[
+            {"label": "CTPlus / official (Unsealed = on, Sealed = off)", "value": INPUT_MAPPING_CTPLUS},
+            {"label": "Legacy 2.x inverted events", "value": INPUT_MAPPING_LEGACY_INVERTED},
+            {"label": "Status word only (ignore live input event polarity)", "value": INPUT_MAPPING_STATUS_ONLY},
+        ],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+    )
+)
+
 def _normalized_defaults(defaults: dict) -> dict:
     """Normalize defaults for backward compatibility."""
     d = dict(defaults or {})
@@ -146,6 +163,7 @@ def _normalized_defaults(defaults: dict) -> dict:
             d.setdefault(CONF_DOOR_LAST, 0)
     d.setdefault(CONF_RELAY_RANGES, "")
     d.setdefault(CONF_INPUT_RANGES, "")
+    d.setdefault(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE)
     d.setdefault(CONF_SEND_ACKS, DEFAULT_SEND_ACKS)
     d.setdefault(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS)
     d.setdefault(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS)
@@ -220,6 +238,7 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_INPUT_RANGES, default=str(defaults.get(CONF_INPUT_RANGES, ""))): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
             ),
+            vol.Optional(CONF_INPUT_MAPPING_MODE, default=str(defaults.get(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE))): INPUT_MAPPING_MODE_SELECTOR,
             vol.Required(CONF_AREAS_COUNT, default=int(defaults.get(CONF_AREAS_COUNT, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=1024, mode=selector.NumberSelectorMode.BOX)
             ),

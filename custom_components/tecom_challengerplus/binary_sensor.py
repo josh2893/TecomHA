@@ -18,9 +18,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         entities.append(TecomInputBinarySensor(hub, i))
 
 
-    # Door contacts (best-effort): ON when door status word is non-zero.
-    for door in getattr(hub, 'door_ids', []):
+    # DGP door contacts.
+    for door in getattr(hub, 'dgp_door_ids', []):
         entities.append(TecomDoorContactBinarySensor(hub, door))
+
+    # RAS / keypad / simple controller contact-style entities.
+    for ras in getattr(hub, 'ras_door_ids', []):
+        entities.append(TecomRasContact(hub, ras))
 
     async_add_entities(entities, True)
 
@@ -54,20 +58,12 @@ class TecomInputBinarySensor(BinarySensorEntity):
 
     @property
     def is_on(self):
-        raw = getattr(self._hub.state, "input_words", {}).get(self._number)
-        if raw is not None:
-            decoded_state, _derived_from = self._hub.decode_input_status(raw)
-            return decoded_state
         return self._hub.state.inputs.get(self._number)
 
     @property
     def extra_state_attributes(self):
+        state = self._hub.state.inputs.get(self._number)
         raw = getattr(self._hub.state, "input_words", {}).get(self._number)
-        if raw is not None:
-            state, derived_from = self._hub.decode_input_status(raw)
-        else:
-            state = self._hub.state.inputs.get(self._number)
-            derived_from = "event_only"
         attrs = {
             "input_state": state,
             "last_event": getattr(self._hub.state, "last_event", None),
@@ -86,11 +82,17 @@ class TecomInputBinarySensor(BinarySensorEntity):
                     "bit_0x20_sealed": bool(raw & 0x20),
                     "bit_0x40_set": bool(raw & 0x40),
                     "bit_0x80_set": bool(raw & 0x80),
-                    "state_derived_from": derived_from,
+                    "state_derived_from": self._hub.input_state_source(self._number),
+                    "input_mapping_mode": getattr(self._hub, "input_mapping_mode", None),
+                    "last_event_code": getattr(self._hub.state, "last_event_code", None),
+                    "last_event_object": getattr(self._hub.state, "last_event_object", None),
                 }
             )
         else:
-            attrs["state_derived_from"] = derived_from
+            attrs["state_derived_from"] = self._hub.input_state_source(self._number)
+            attrs["input_mapping_mode"] = getattr(self._hub, "input_mapping_mode", None)
+            attrs["last_event_code"] = getattr(self._hub.state, "last_event_code", None)
+            attrs["last_event_object"] = getattr(self._hub.state, "last_event_object", None)
         return attrs
 
 

@@ -2,16 +2,55 @@ send_raw_hex:
   name: Send raw hex
   description: Send a raw hex payload to the panel over the selected transport. Intended for protocol testing / reverse engineering.
   fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id. Required when multiple Tecom panels are loaded.
+      required: false
+      selector:
+        text:
     hex:
       name: Hex payload
-      description: Hex string (e.g. '01ff0a')
+      description: Hex string (for example 01ff0a)
       required: true
+      selector:
+        text:
+
+request_full_sync:
+  name: Request full sync
+  description: Ask the integration to run a full CTPlus-style status refresh for the selected panel.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id. Required when multiple Tecom panels are loaded.
+      required: false
+      selector:
+        text:
+
+retrieve_events:
+  name: Retrieve events
+  description: Manually send the CTPlus Retrieve events command to the selected panel.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id. Required when multiple Tecom panels are loaded.
+      required: false
+      selector:
+        text:
+
+reinitialize_session:
+  name: Reinitialize session
+  description: Re-send the CTPlus session hello, session parameters, and door-status init sequence.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id. Required when multiple Tecom panels are loaded.
+      required: false
       selector:
         text:
 
 test_event:
   name: Test event
-  description: Fires an internal test event tecom_challengerplus_test (useful when building automations).
+  description: Fires an internal test event tecom_challengerplus_test.
   fields:
     note:
       name: Note
@@ -19,7 +58,13 @@ test_event:
       selector:
         text:
 
-
 dump_debug:
   name: Dump debug
-  description: Write a debug JSON file for all loaded Tecom ChallengerPlus hubs.
+  description: Write a debug JSON file for the selected panel, or for all loaded Tecom panels when entry_id is omitted.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      required: false
+      selector:
+        text:

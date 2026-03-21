@@ -7,6 +7,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
@@ -18,24 +19,76 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "lock", "alarm_control_panel"]
 
 
-def _build_dump_debug_service(hass: HomeAssistant):
-    """Create the dump_debug service handler bound to this hass instance."""
+def _iter_hubs(hass: HomeAssistant):
+    from .hub import TecomHub  # local import to keep config flow loadable
 
-    async def _async_dump_debug_service(call):
-        """Write a debug dump for all loaded Tecom hubs."""
-        from .hub import TecomHub  # local import to keep config flow loadable
+    for value in hass.data.get(DOMAIN, {}).values():
+        if isinstance(value, TecomHub):
+            yield value
 
-        hubs = []
-        for value in hass.data.get(DOMAIN, {}).values():
-            if isinstance(value, TecomHub):
-                hubs.append(value)
+
+def _resolve_service_hubs(hass: HomeAssistant, entry_id: str | None):
+    hubs = [hub for hub in _iter_hubs(hass) if entry_id is None or hub.entry.entry_id == entry_id]
+    if entry_id and not hubs:
+        raise ServiceValidationError(f"No loaded Tecom ChallengerPlus entry matches entry_id '{entry_id}'")
+    if not entry_id and len(hubs) > 1:
+        raise ServiceValidationError("Multiple Tecom ChallengerPlus entries are loaded; provide entry_id")
+    if not hubs:
+        raise ServiceValidationError("No Tecom ChallengerPlus hubs are loaded")
+    return hubs
+
+
+def _ensure_services_registered(hass: HomeAssistant) -> None:
+    async def _async_send_raw_hex(call):
+        entry_id = call.data.get("entry_id")
+        hex_str = (call.data.get("hex") or "").replace(" ", "")
+        if not hex_str:
+            raise ServiceValidationError("hex is required")
+        try:
+            payload = bytes.fromhex(hex_str)
+        except ValueError as e:
+            raise ServiceValidationError(f"Invalid hex: {e}") from e
+        for hub in _resolve_service_hubs(hass, entry_id):
+            await hub.async_send_bytes(payload)
+
+    async def _async_dump_debug(call):
+        entry_id = call.data.get("entry_id")
+        hubs = _resolve_service_hubs(hass, entry_id) if entry_id else list(_iter_hubs(hass))
         if not hubs:
-            _LOGGER.warning("dump_debug called but no Tecom hubs are loaded")
-            return
+            raise ServiceValidationError("No Tecom ChallengerPlus hubs are loaded")
         for hub in hubs:
             await hub.async_dump_debug()
 
-    return _async_dump_debug_service
+    async def _async_request_full_sync(call):
+        entry_id = call.data.get("entry_id")
+        for hub in _resolve_service_hubs(hass, entry_id):
+            await hub.async_request_full_sync()
+
+    async def _async_retrieve_events(call):
+        entry_id = call.data.get("entry_id")
+        for hub in _resolve_service_hubs(hass, entry_id):
+            await hub.async_retrieve_events()
+
+    async def _async_reinitialize_session(call):
+        entry_id = call.data.get("entry_id")
+        for hub in _resolve_service_hubs(hass, entry_id):
+            await hub.async_reinitialize_session()
+
+    async def _async_test_event(call):
+        hass.bus.async_fire(f"{DOMAIN}_test", {"note": call.data.get("note")})
+
+    if not hass.services.has_service(DOMAIN, "send_raw_hex"):
+        hass.services.async_register(DOMAIN, "send_raw_hex", _async_send_raw_hex)
+    if not hass.services.has_service(DOMAIN, "dump_debug"):
+        hass.services.async_register(DOMAIN, "dump_debug", _async_dump_debug)
+    if not hass.services.has_service(DOMAIN, "request_full_sync"):
+        hass.services.async_register(DOMAIN, "request_full_sync", _async_request_full_sync)
+    if not hass.services.has_service(DOMAIN, "retrieve_events"):
+        hass.services.async_register(DOMAIN, "retrieve_events", _async_retrieve_events)
+    if not hass.services.has_service(DOMAIN, "reinitialize_session"):
+        hass.services.async_register(DOMAIN, "reinitialize_session", _async_reinitialize_session)
+    if not hass.services.has_service(DOMAIN, "test_event"):
+        hass.services.async_register(DOMAIN, "test_event", _async_test_event)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -51,8 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub = TecomHub(hass, entry, panel_export_names=panel_export_names)
     await hub.async_start()
 
-    if not hass.services.has_service(DOMAIN, "dump_debug"):
-        hass.services.async_register(DOMAIN, "dump_debug", _build_dump_debug_service(hass))
+    _ensure_services_registered(hass)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = hub
 

@@ -137,22 +137,39 @@ class TecomTCPRaw(TecomTransportBase):
         self._writer: asyncio.StreamWriter | None = None
         self._server: asyncio.base_events.Server | None = None
         self._task: asyncio.Task | None = None
+        self._stopping = False
+        self._reconnect_delay = 5.0
 
     async def async_start(self) -> None:
+        self._stopping = False
         if self._role == "server":
             self._server = await asyncio.start_server(self._handle_client, self._bind_host, self._bind_port)
             _LOGGER.info("TCP raw server listening on %s:%s", self._bind_host, self._bind_port)
         else:
-            await self._connect_client()
+            try:
+                await self._connect_client()
+            except Exception as err:
+                _LOGGER.warning("TCP raw initial connect to %s:%s failed, will retry in background: %s", self._host, self._port, err)
         self._task = asyncio.create_task(self._read_loop())
 
     async def _connect_client(self) -> None:
+        if self._role != "client" or self._stopping or self._writer is not None:
+            return
         self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
         _LOGGER.info("TCP raw connected to %s:%s", self._host, self._port)
 
+    async def _close_client(self) -> None:
+        writer = self._writer
+        self._writer = None
+        self._reader = None
+        if writer:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         # Accept first connection and use it
-        if self._writer:
+        if self._writer and not self._writer.is_closing():
             writer.close()
             await writer.wait_closed()
             return
@@ -160,9 +177,15 @@ class TecomTCPRaw(TecomTransportBase):
         _LOGGER.info("TCP raw client connected from %s", writer.get_extra_info("peername"))
 
     async def _read_loop(self) -> None:
-        while True:
-            await asyncio.sleep(0)
+        while not self._stopping:
             if not self._reader:
+                if self._role == "client":
+                    try:
+                        await self._connect_client()
+                    except Exception as err:
+                        _LOGGER.debug("TCP raw reconnect failed: %s", err)
+                        await asyncio.sleep(self._reconnect_delay)
+                        continue
                 await asyncio.sleep(0.25)
                 continue
             try:
@@ -172,32 +195,40 @@ class TecomTCPRaw(TecomTransportBase):
                 data = b""
 
             if not data:
+                await self._close_client()
+                if self._role == "client" and not self._stopping:
+                    await asyncio.sleep(1.0)
+                    continue
                 await asyncio.sleep(0.5)
                 continue
             self._on(data)
 
     async def async_stop(self) -> None:
+        self._stopping = True
         if self._task:
             self._task.cancel()
             with contextlib.suppress(Exception):
                 await self._task
             self._task = None
-        if self._writer:
-            self._writer.close()
-            with contextlib.suppress(Exception):
-                await self._writer.wait_closed()
-            self._writer = None
-            self._reader = None
+        await self._close_client()
         if self._server:
             self._server.close()
             await self._server.wait_closed()
             self._server = None
 
     async def async_send(self, data: bytes) -> None:
+        if not self._writer and self._role == "client" and not self._stopping:
+            await self._connect_client()
         if not self._writer:
             raise TecomConnectionError("TCP not connected")
         self._writer.write(data)
         await self._writer.drain()
+
+    def send_nowait(self, data: bytes) -> None:
+        """Immediate best-effort send for time-critical ACK frames."""
+        if not self._writer:
+            raise TecomConnectionError("TCP not connected")
+        self._writer.write(data)
 
 
 # -------------------------
