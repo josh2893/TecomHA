@@ -1,8 +1,9 @@
 """Door control entities.
 
-We use the CTPlus door-status *word* as a proxy for physical door state in the UI:
-  - 0x0000 -> Closed/Secure (shown as Locked)
-  - non-zero -> Open/Unsecure (shown as Unlocked)
+Door contact, secure state, and lock/release state are not the same thing on
+Challenger/CTPlus. In 3.0.1 we only expose the lock entity from explicit
+lock/secure events (or the last confirmed value) instead of guessing from the
+door contact/status word.
 """
 
 from __future__ import annotations
@@ -62,9 +63,10 @@ class TecomDoorLock(LockEntity):
 
     @property
     def is_locked(self):
-        # Prefer explicit lock/secure events when available. These are a better match for
-        # CTPlus's door control semantics than simply treating any non-zero door word as
-        # "unlocked".
+        # Only trust explicit lock/secure semantics. The door status word is still useful
+        # for the reed/contact entity, but it proved unreliable for deciding whether a
+        # door is actually released. When CTPlus-style secure/lock events have not yet
+        # been seen for this door, keep the lock state unknown instead of guessing.
         lock_state = getattr(self._hub.state, "door_lock", {}).get(self._door)
         if lock_state in ("locked", "auto_locked"):
             return True
@@ -77,10 +79,7 @@ class TecomDoorLock(LockEntity):
         if secure_state == "unsecured":
             return False
 
-        w = getattr(self._hub.state, "door_words", {}).get(self._door)
-        if w is None:
-            return None
-        return w == 0
+        return None
 
     @property
     def extra_state_attributes(self):
@@ -89,6 +88,7 @@ class TecomDoorLock(LockEntity):
             "door_state": getattr(self._hub.state, "doors", {}).get(self._door),
             "lock_state": getattr(self._hub.state, "door_lock", {}).get(self._door),
             "secure_state": getattr(self._hub.state, "door_secure", {}).get(self._door),
+            "lock_derived_from": self._lock_state_source(),
             "last_event": getattr(self._hub.state, "last_event", None),
         }
         if w is not None:
@@ -112,6 +112,15 @@ class TecomDoorLock(LockEntity):
 
     async def async_open(self, **kwargs):
         await self.async_unlock(**kwargs)
+
+    def _lock_state_source(self) -> str:
+        lock_state = getattr(self._hub.state, "door_lock", {}).get(self._door)
+        if lock_state in ("locked", "auto_locked", "unlocked", "auto_unlocked"):
+            return f"door_lock:{lock_state}"
+        secure_state = getattr(self._hub.state, "door_secure", {}).get(self._door)
+        if secure_state in ("secured", "unsecured"):
+            return f"door_secure:{secure_state}"
+        return "explicit_event_pending"
 
 
 class TecomRasDoorLock(LockEntity):

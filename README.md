@@ -9,7 +9,22 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.0.0 highlights
+## Version 3.0.2 highlights
+
+- New **session quiet-mode recovery** for CTPlus-style comms path protection.
+  - When the same queued panel event is retried repeatedly, the integration now stops host-initiated recalls for a while and leaves only heartbeats + immediate event ACKs running.
+  - This is designed to mimic CTPlus/ARES behaviour more closely when the panel is under retry pressure.
+- A short **0x49 backoff** path has been added. If the panel starts replying to recalls with short `0x49` frames, the integration treats that as a signal to back off instead of continuing to poll.
+- After quiet mode, the integration performs a slower **session reinitialisation** and backlog drain before broad status sync resumes.
+- Safer defaults aimed at Challenger management-path stability:
+  - poll interval = **30 seconds**
+  - min send interval = **250 ms**
+  - door polling = **startup only** by default
+
+- Door lock/release state now only comes from explicit CTPlus secure/lock events; it no longer guesses from the door contact/status word.
+- Door secure/unlock caches are cleared on session reinitialisation/reconnect so stale door-release states are less likely after reconnects.
+- Debug dumps now include `door_secure` and `door_lock` maps for easier troubleshooting.
+
 
 - CTPlus-style **session reinitialisation** with paced hello / params / door-status init
 - **Immediate ACK support on both UDP and TCP** transports

@@ -316,6 +316,16 @@ class TecomHub:
         self._last_unsolicited_event_monotonic: float = 0.0
         self._startup_backlog_quiet_seconds: float = 2.5
         self._startup_backlog_max_seconds: float = 20.0
+        # Quiet-mode recovery: when the panel starts retrying the same queue-head event
+        # or returns short error-style replies, stop host-initiated recalls for a while and
+        # let only heartbeats + immediate panel ACKs flow. This matches CTPlus/ARES style
+        # behaviour much more closely than continuing to poll through the retry storm.
+        self._quiet_mode_until: float = 0.0
+        self._quiet_reason: str | None = None
+        self._quiet_reinit_pending: bool = False
+        self._last_panel_event_seq: int | None = None
+        self._panel_retry_event_threshold: int = 3
+        self._quiet_mode_seconds: float = max(90.0, float(self.poll_interval) * 3.0)
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -448,6 +458,40 @@ class TecomHub:
                 cb()
             except Exception:  # pragma: no cover
                 _LOGGER.exception("Listener error")
+
+    def _in_quiet_mode(self) -> bool:
+        return asyncio.get_running_loop().time() < self._quiet_mode_until
+
+    def _cancel_pending_refresh_tasks(self) -> None:
+        for task in list(self._input_refresh_tasks.values()):
+            task.cancel()
+        self._input_refresh_tasks.clear()
+        for task in list(self._door_refresh_tasks.values()):
+            task.cancel()
+        self._door_refresh_tasks.clear()
+        if self._retrieve_events_task and not self._retrieve_events_task.done():
+            self._retrieve_events_task.cancel()
+        self._retrieve_events_task = None
+
+    def _enter_quiet_mode(self, reason: str, *, duration: float | None = None, reinitialize: bool = True) -> None:
+        loop = asyncio.get_running_loop()
+        now = loop.time()
+        quiet_for = max(15.0, float(duration if duration is not None else self._quiet_mode_seconds))
+        until = now + quiet_for
+        self._quiet_mode_until = max(self._quiet_mode_until, until)
+        self._quiet_reason = reason
+        self._quiet_reinit_pending = self._quiet_reinit_pending or reinitialize
+        self._poll_backoff_until = max(self._poll_backoff_until, self._quiet_mode_until)
+        self._cancel_pending_refresh_tasks()
+        self.state.last_event = f"Quiet mode: {reason}"
+        self._debug_frames.append({
+            'ts': time.time(),
+            'dir': 'note',
+            'peer': str(self._udp_last_peer),
+            'hex': '',
+            'note': f'quiet_mode:{reason}',
+        })
+        self._notify()
 
     async def async_start(self) -> None:
         """Start transport and register services."""
@@ -595,7 +639,16 @@ class TecomHub:
             await self._send_frame(frame)
             self._last_send_monotonic = asyncio.get_running_loop().time()
 
-    async def _send_command(self, body: bytes, type_offset: int | None = None) -> None:
+    async def _send_command(self, body: bytes, type_offset: int | None = None, *, bypass_quiet: bool = False) -> None:
+        if self._in_quiet_mode() and not bypass_quiet:
+            self._debug_frames.append({
+                'ts': time.time(),
+                'dir': 'note',
+                'peer': str(self._udp_last_peer),
+                'hex': body.hex(),
+                'note': 'command_suppressed_quiet_mode',
+            })
+            return
         seq = self._next_seq()
         # If panel type offset isn't known yet, send both variants (0x00 and 0x40).
         if type_offset is None and not self._type_offset_known:
@@ -630,6 +683,23 @@ class TecomHub:
                 # When the panel is actively streaming queued events, back off host-initiated
                 # polling briefly so we do not occupy the command queue and starve event delivery.
                 now = asyncio.get_running_loop().time()
+
+                if now < self._quiet_mode_until:
+                    await asyncio.sleep(min(1.0, self._quiet_mode_until - now))
+                    continue
+
+                if self._quiet_reinit_pending:
+                    try:
+                        await self.async_reinitialize_session(log_errors=False)
+                    except Exception:
+                        _LOGGER.debug("Quiet-mode reinitialisation failed (will retry)", exc_info=True)
+                    else:
+                        self._quiet_reinit_pending = False
+                        self._startup_backlog_started_monotonic = asyncio.get_running_loop().time()
+                        self._last_unsolicited_event_monotonic = self._startup_backlog_started_monotonic
+                        self._startup_backlog_drain = True
+                    await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
+                    continue
 
                 if self._startup_backlog_drain:
                     quiet_for = now - self._last_unsolicited_event_monotonic
@@ -949,7 +1019,7 @@ class TecomHub:
         many 0x96/0x97 input events in a short burst. If we immediately fire a refresh for each
         one, we can occupy the command queue and make later queued events appear to stall.
         """
-        if self.mode != MODE_CTPLUS or input_no <= 0:
+        if self.mode != MODE_CTPLUS or input_no <= 0 or self._in_quiet_mode():
             return
         now = asyncio.get_running_loop().time()
         self._poll_backoff_until = max(self._poll_backoff_until, now + 1.5)
@@ -986,7 +1056,7 @@ class TecomHub:
 
     def _schedule_door_status_refresh(self, door_no: int, *, delay: float = 0.25) -> None:
         """Coalesced targeted door status refresh after door/access events."""
-        if self.mode != MODE_CTPLUS or door_no <= 0:
+        if self.mode != MODE_CTPLUS or door_no <= 0 or self._in_quiet_mode():
             return
         now = asyncio.get_running_loop().time()
         self._poll_backoff_until = max(self._poll_backoff_until, now + 1.5)
@@ -1032,7 +1102,7 @@ class TecomHub:
         Without this, some panels keep retransmitting the same queued access/door event even
         though the immediate 0x73/0xB3 ACK is on the wire.
         """
-        if self.mode != MODE_CTPLUS:
+        if self.mode != MODE_CTPLUS or self._in_quiet_mode():
             return
         if self._retrieve_events_task and not self._retrieve_events_task.done():
             return
@@ -1079,6 +1149,12 @@ class TecomHub:
         return self._note_panel_event_retransmit(fr) > 1
 
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
+        if fr.msg_type == 0x49:
+            self._enter_quiet_mode("panel returned 0x49 for a host recall", duration=max(60.0, float(self.poll_interval) * 2.0))
+            self.state.last_event = f"Panel 0x49 {fr.body.hex()}"
+            self._notify()
+            return
+
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
             # Always ACK 0x40 frames immediately (panel expects this for comms path health
             # and to dequeue access/alarm events).
@@ -1180,9 +1256,19 @@ class TecomHub:
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
+                prev_seq = self._last_panel_event_seq
+                self._last_panel_event_seq = fr.seq
+                if prev_seq is not None and prev_seq < 0xF0 and fr.seq <= 0x03 and prev_seq > 0x03:
+                    self._enter_quiet_mode("panel event sequence restarted", duration=max(45.0, float(self.poll_interval) * 2.0))
+
                 # Suppress retransmitted duplicates on the HA event bus *and* avoid spawning
                 # extra targeted refreshes for the same repeated queue-head event.
                 repeat_count = self._note_panel_event_retransmit(fr)
+                if repeat_count >= self._panel_retry_event_threshold:
+                    self._enter_quiet_mode(
+                        f"repeated panel event retries for code 0x{code:02X} object {obj}",
+                        duration=max(90.0, float(self.poll_interval) * 3.0),
+                    )
                 if repeat_count > 1:
                     self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
                     self._notify()
@@ -1293,6 +1379,9 @@ class TecomHub:
                     "input_ids": list(self.input_ids),
                     "areas_count": self.areas_count,
                     "input_mapping_mode": self.input_mapping_mode,
+                    "quiet_mode_until": self._quiet_mode_until,
+                    "quiet_reason": self._quiet_reason,
+                    "quiet_reinit_pending": self._quiet_reinit_pending,
                 },
                 "state": {
                     "last_event": self.state.last_event,
@@ -1303,6 +1392,8 @@ class TecomHub:
                     "relays": dict(self.state.relays),
                     "doors": dict(self.state.doors),
                     "door_words": {str(k): f"0x{v:04X}" for k, v in self.state.door_words.items()},
+                    "door_secure": dict(self.state.door_secure),
+                    "door_lock": dict(self.state.door_lock),
                     "areas": dict(self.state.areas),
                     "area_words": {str(k): f"0x{v:04X}" for k, v in self.state.area_words.items()},
                     "ras_status": {str(k): f"0x{v:02X}" for k, v in self.state.ras_status.items()},
@@ -1331,16 +1422,28 @@ class TecomHub:
             raise TecomNotSupported("Retrieve events requires CTPlus mode")
         await self._send_command(proto.cmd_retrieve_events())
 
+    def _clear_door_lock_runtime_state(self) -> None:
+        """Drop cached door lock/secure state before a new CTPlus session init.
+
+        Contact/reed state is kept separately in door_words/doors. This prevents stale
+        secure/unlock events from a previous session being reused after reconnect or a
+        manual reinitialisation.
+        """
+        self.state.door_secure.clear()
+        self.state.door_lock.clear()
+
     async def async_reinitialize_session(self, log_errors: bool = True) -> None:
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Session reinitialisation requires CTPlus mode")
+        self._clear_door_lock_runtime_state()
+        self._notify()
         try:
-            await self._send_command(proto.cmd_session_hello())
-            await asyncio.sleep(max(0.15, self._min_send_interval * 2.0))
-            await self._send_command(proto.cmd_session_params())
-            await asyncio.sleep(max(0.15, self._min_send_interval * 2.0))
+            await self._send_command(proto.cmd_session_hello(), bypass_quiet=True)
+            await asyncio.sleep(max(0.25, self._min_send_interval * 2.5))
+            await self._send_command(proto.cmd_session_params(), bypass_quiet=True)
+            await asyncio.sleep(max(0.25, self._min_send_interval * 2.5))
             if getattr(self, 'dgp_door_ids', None):
-                await self._send_command(proto.cmd_door_status_init())
+                await self._send_command(proto.cmd_door_status_init(), bypass_quiet=True)
                 self._door_status_inited = True
         except Exception:
             if log_errors:
@@ -1351,6 +1454,8 @@ class TecomHub:
         self._startup_backlog_started_monotonic = now
         self._last_unsolicited_event_monotonic = now
         self._startup_backlog_drain = True
+        self._quiet_mode_until = 0.0
+        self._quiet_reason = None
 
     # -------------------------
     # Control helpers
