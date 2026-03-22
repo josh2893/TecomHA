@@ -836,7 +836,9 @@ class TecomHub:
                         await asyncio.sleep(min(0.5, self._startup_backlog_quiet_seconds - quiet_for))
                         continue
                     try:
-                        await self._async_initial_sync(runtime_only=True)
+                        # Always perform one full startup snapshot after the initial backlog drain.
+                        # Runtime polling options only control ongoing polling after startup.
+                        await self._async_initial_sync(runtime_only=False)
                     except Exception:
                         _LOGGER.debug("Initial sync after backlog drain failed (will retry)", exc_info=True)
                     else:
@@ -935,7 +937,7 @@ class TecomHub:
                 await self._send_command(proto.cmd_request_ras_status(ras))
 
         if poll_doors:
-            if getattr(self, "door_poll_startup_only", False) and not runtime_only:
+            if not runtime_only:
                 await self._async_startup_door_sweep()
             else:
                 await self.async_request_doors(force_all=True)
