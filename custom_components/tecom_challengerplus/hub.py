@@ -349,6 +349,12 @@ class TecomHub:
         self._last_repeated_event_object: int | None = None
         self._last_repeated_event_count: int = 0
         self._followup_ack_until: dict[tuple[int, str], float] = {}
+        # CTPlus on-wire captures ACK panel 0x40 frames noticeably slower than this
+        # integration used to: typically around 6-25 ms rather than sub-millisecond.
+        # Old Challenger panels appear happier with that steadier pacing during bursts,
+        # so mirror CTPlus more closely here.
+        self._panel_ack_delay_seconds: float = 0.010 if self.mode == MODE_CTPLUS else 0.0
+        self._panel_followup_ack_delay_seconds: float = max(0.040, self._panel_ack_delay_seconds + 0.030)
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -538,22 +544,23 @@ class TecomHub:
         self._notify()
 
     def _schedule_transport_restart(self, reason: str) -> None:
-        now = asyncio.get_running_loop().time()
-        if (now - self._last_transport_restart_monotonic) < self._transport_restart_cooldown:
-            return
-        # Do not tear the transport down while the panel is still actively retrying
-        # queue-head events. That can suppress otherwise-valid ACKs at exactly the wrong
-        # time and make the panel-side retry storm worse. Arm a deferred restart that
-        # will only fire after the path has been quiet for a short window.
-        self._transport_restart_after_quiet = True
-        self._transport_restart_after_quiet_reason = reason
-        self._quiet_reinit_pending = False
+        """Deferred HA-side transport restarts are disabled.
+
+        The panel-side comms path is sensitive during retry storms, and restarting only
+        the Home Assistant transport has not proven useful in the field. Keep the helper
+        as a no-op so diagnostics can note the suppressed action without changing the
+        live session.
+        """
+        self._transport_restart_pending = False
+        self._transport_restart_reason = None
+        self._transport_restart_after_quiet = False
+        self._transport_restart_after_quiet_reason = None
         self._debug_frames.append({
             'ts': time.time(),
             'dir': 'note',
             'peer': str(self._udp_last_peer),
             'hex': '',
-            'note': f'transport_restart_deferred:{reason}',
+            'note': f'transport_restart_disabled:{reason}',
         })
 
     async def async_start(self) -> None:
@@ -772,14 +779,6 @@ class TecomHub:
             try:
                 now = asyncio.get_running_loop().time()
 
-                if self._transport_restart_pending:
-                    try:
-                        await self._async_restart_transport_session(self._transport_restart_reason or "stuck_panel_queue")
-                    except Exception:
-                        _LOGGER.debug("Transport/session restart failed (will retry)", exc_info=True)
-                    await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
-                    continue
-
                 if now < self._quiet_mode_until:
                     await asyncio.sleep(min(1.0, self._quiet_mode_until - now))
                     continue
@@ -787,15 +786,6 @@ class TecomHub:
                 if self._in_burst_guard():
                     await asyncio.sleep(min(1.0, self._burst_guard_until - now))
                     continue
-
-                if self._transport_restart_after_quiet:
-                    quiet_for = now - self._last_unsolicited_event_monotonic
-                    if quiet_for >= 10.0:
-                        self._transport_restart_pending = True
-                        self._transport_restart_reason = self._transport_restart_after_quiet_reason or "stuck_panel_queue"
-                        self._transport_restart_after_quiet = False
-                        self._transport_restart_after_quiet_reason = None
-                        continue
 
                 if self._quiet_reinit_pending:
                     try:
@@ -1127,12 +1117,15 @@ class TecomHub:
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": rem.hex(), "len": len(rem)})
 
     def _send_panel_ack_immediate(self, fr: proto.Frame) -> None:
-        """Send a panel ACK immediately for unsolicited 0x40 frames.
+        """Send a panel ACK for unsolicited 0x40 frames.
 
-        CTPlus/ARES expect these ACKs to go out as quickly as possible so the panel
-        retires the current queue item and keeps the comms path flowing. This applies
-        to both UDP and TCP transports.
+        The name is retained for compatibility with earlier builds, but in CTPlus mode
+        the ACK is intentionally delayed very slightly to better match CTPlus timing on
+        old Challenger panels.
         """
+        self._send_panel_ack(fr)
+
+    def _send_panel_ack(self, fr: proto.Frame, *, delay: float | None = None, note: str = 'panel_ack') -> None:
         if not self.send_acks:
             return
         payload = proto.build_ack(
@@ -1141,26 +1134,42 @@ class TecomHub:
             type_offset=getattr(fr, 'type_offset', self._type_offset),
         ).to_bytes()
         peer = self._udp_last_peer
-        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(peer), 'hex': payload.hex(), 'note': 'panel_ack'})
-        try:
-            if peer is not None and hasattr(self._transport_obj, 'sendto_nowait'):
-                self._transport_obj.sendto_nowait(payload, peer)
-                return
-            if hasattr(self._transport_obj, 'send_nowait'):
-                self._transport_obj.send_nowait(payload)
-                return
-        except Exception as err:  # pragma: no cover - defensive logging
-            _LOGGER.debug("Immediate panel ACK failed, falling back to async send: %s", err)
+        ack_delay = self._panel_ack_delay_seconds if delay is None else max(0.0, float(delay))
 
-        async def _fallback() -> None:
+        def _try_nowait_send() -> bool:
             try:
+                if peer is not None and hasattr(self._transport_obj, 'sendto_nowait'):
+                    self._transport_obj.sendto_nowait(payload, peer)
+                    return True
+                if hasattr(self._transport_obj, 'send_nowait'):
+                    self._transport_obj.send_nowait(payload)
+                    return True
+            except Exception as err:  # pragma: no cover - defensive logging
+                _LOGGER.debug("Panel ACK nowait send failed, falling back to async send: %s", err)
+            return False
+
+        async def _runner() -> None:
+            try:
+                if ack_delay > 0:
+                    await asyncio.sleep(ack_delay)
+                self._debug_frames.append({
+                    'ts': time.time(),
+                    'dir': 'tx',
+                    'peer': str(peer),
+                    'hex': payload.hex(),
+                    'note': note,
+                })
+                if _try_nowait_send():
+                    return
                 await self.async_send_bytes(payload, addr=peer if peer is not None else None)
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                _LOGGER.debug("Fallback panel ACK send failed", exc_info=True)
+                _LOGGER.debug("Panel ACK send failed", exc_info=True)
 
-        asyncio.create_task(_fallback())
+        asyncio.create_task(_runner())
 
-    def _schedule_followup_panel_ack(self, fr: proto.Frame, *, delay: float = 0.05) -> None:
+    def _schedule_followup_panel_ack(self, fr: proto.Frame, *, delay: float | None = None) -> None:
         key = (fr.seq, fr.body.hex())
         now = asyncio.get_running_loop().time()
         until = self._followup_ack_until.get(key, 0.0)
@@ -1170,9 +1179,10 @@ class TecomHub:
 
         async def _runner() -> None:
             try:
-                await asyncio.sleep(max(0.0, delay))
+                followup_delay = self._panel_followup_ack_delay_seconds if delay is None else max(0.0, float(delay))
+                await asyncio.sleep(followup_delay)
                 # Only send the extra ACK while the same event is clearly being retried.
-                self._send_panel_ack_immediate(fr)
+                self._send_panel_ack(fr, delay=0.0, note='panel_ack_followup')
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -1446,7 +1456,7 @@ class TecomHub:
                     # A second ACK shortly after a clearly retried queue-head event helps avoid
                     # rare cases where the first ACK was accepted by the host stack but not
                     # acted on by the panel quickly enough during an event burst.
-                    self._schedule_followup_panel_ack(fr, delay=0.05)
+                    self._schedule_followup_panel_ack(fr)
                 if repeat_count >= self._panel_retry_event_threshold:
                     self._enter_quiet_mode(
                         f"repeated panel event retries for code 0x{code:02X} object {obj}",
@@ -1457,8 +1467,10 @@ class TecomHub:
                         f"panel_retry_storm_code_0x{code:02X}_object_{obj}"
                     )
                 if repeat_count > 1:
-                    self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
-                    self._notify()
+                    # Keep duplicate-retry handling off the normal HA event/state path.
+                    # Repeated queue-head retries are still tracked in diagnostics and
+                    # quiet-mode logic, but do not generate extra entity churn or recorder
+                    # writes that could add load during a burst.
                     return
 
                 if code == 0x96:
@@ -1557,6 +1569,8 @@ class TecomHub:
                     "send_heartbeats": self.send_heartbeats,
                     "heartbeat_interval": self.heartbeat_interval,
                     "min_send_interval_ms": self.min_send_interval_ms,
+                    "panel_ack_delay_ms": round(self._panel_ack_delay_seconds * 1000.0, 3),
+                    "panel_followup_ack_delay_ms": round(self._panel_followup_ack_delay_seconds * 1000.0, 3),
                     "dgp_door_ids": list(self.dgp_door_ids),
                     "ras_door_ids": list(self.ras_door_ids),
                     "input_ids": list(self.input_ids),

@@ -1,4 +1,3 @@
-<img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/e7978755-c495-4339-80f0-821b56f01c4b" />
 # Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
@@ -10,7 +9,7 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.0.6 highlights
+## Version 3.0.8 highlights
 
 - Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
 - Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
