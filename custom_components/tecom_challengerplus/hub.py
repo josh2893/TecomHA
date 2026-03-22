@@ -292,7 +292,7 @@ class TecomHub:
         self.door_ids = self.dgp_door_ids + self.ras_door_ids
 
         # Debug ring buffer (last N frames).
-        self._debug_frames = deque(maxlen=500)
+        self._debug_frames = deque(maxlen=300)
         # Retransmitted panel events can repeat if the ACK is not seen quickly enough.
         # Keep a short cache so duplicates do not flood the HA event bus.
         self._recent_event_keys: dict[tuple[int, str], float] = {}
@@ -339,6 +339,16 @@ class TecomHub:
         self._transport_restart_reason: str | None = None
         self._last_transport_restart_monotonic: float = 0.0
         self._transport_restart_cooldown: float = 180.0
+        self._transport_restart_after_quiet: bool = False
+        self._transport_restart_after_quiet_reason: str | None = None
+        self._burst_event_times: deque[float] = deque(maxlen=64)
+        self._burst_guard_until: float = 0.0
+        self._last_repeated_event_key: tuple[int, str] | None = None
+        self._last_repeated_event_raw: str | None = None
+        self._last_repeated_event_code: int | None = None
+        self._last_repeated_event_object: int | None = None
+        self._last_repeated_event_count: int = 0
+        self._followup_ack_until: dict[tuple[int, str], float] = {}
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -475,6 +485,27 @@ class TecomHub:
     def _in_quiet_mode(self) -> bool:
         return asyncio.get_running_loop().time() < self._quiet_mode_until
 
+    def _in_burst_guard(self) -> bool:
+        return asyncio.get_running_loop().time() < self._burst_guard_until
+
+    def _note_unsolicited_event_burst(self) -> None:
+        now = asyncio.get_running_loop().time()
+        self._burst_event_times.append(now)
+        while self._burst_event_times and (now - self._burst_event_times[0]) > 1.5:
+            self._burst_event_times.popleft()
+        if len(self._burst_event_times) >= 12:
+            until = now + 3.0
+            if until > self._burst_guard_until:
+                self._burst_guard_until = until
+                self._poll_backoff_until = max(self._poll_backoff_until, until)
+                self._debug_frames.append({
+                    "ts": time.time(),
+                    "dir": "note",
+                    "peer": str(self._udp_last_peer),
+                    "hex": "",
+                    "note": f"burst_guard:{len(self._burst_event_times)}",
+                })
+
     def _cancel_pending_refresh_tasks(self) -> None:
         for task in list(self._input_refresh_tasks.values()):
             task.cancel()
@@ -510,15 +541,19 @@ class TecomHub:
         now = asyncio.get_running_loop().time()
         if (now - self._last_transport_restart_monotonic) < self._transport_restart_cooldown:
             return
-        self._transport_restart_pending = True
-        self._transport_restart_reason = reason
+        # Do not tear the transport down while the panel is still actively retrying
+        # queue-head events. That can suppress otherwise-valid ACKs at exactly the wrong
+        # time and make the panel-side retry storm worse. Arm a deferred restart that
+        # will only fire after the path has been quiet for a short window.
+        self._transport_restart_after_quiet = True
+        self._transport_restart_after_quiet_reason = reason
         self._quiet_reinit_pending = False
         self._debug_frames.append({
             'ts': time.time(),
             'dir': 'note',
             'peer': str(self._udp_last_peer),
             'hex': '',
-            'note': f'transport_restart_pending:{reason}',
+            'note': f'transport_restart_deferred:{reason}',
         })
 
     async def async_start(self) -> None:
@@ -694,13 +729,14 @@ class TecomHub:
             self._last_send_monotonic = asyncio.get_running_loop().time()
 
     async def _send_command(self, body: bytes, type_offset: int | None = None, *, bypass_quiet: bool = False) -> None:
-        if self._in_quiet_mode() and not bypass_quiet:
+        if (self._in_quiet_mode() or self._in_burst_guard()) and not bypass_quiet:
+            note = "command_suppressed_quiet_mode" if self._in_quiet_mode() else "command_suppressed_burst_guard"
             self._debug_frames.append({
                 'ts': time.time(),
                 'dir': 'note',
                 'peer': str(self._udp_last_peer),
                 'hex': body.hex(),
-                'note': 'command_suppressed_quiet_mode',
+                'note': note,
             })
             return
         seq = self._next_seq()
@@ -747,6 +783,19 @@ class TecomHub:
                 if now < self._quiet_mode_until:
                     await asyncio.sleep(min(1.0, self._quiet_mode_until - now))
                     continue
+
+                if self._in_burst_guard():
+                    await asyncio.sleep(min(1.0, self._burst_guard_until - now))
+                    continue
+
+                if self._transport_restart_after_quiet:
+                    quiet_for = now - self._last_unsolicited_event_monotonic
+                    if quiet_for >= 10.0:
+                        self._transport_restart_pending = True
+                        self._transport_restart_reason = self._transport_restart_after_quiet_reason or "stuck_panel_queue"
+                        self._transport_restart_after_quiet = False
+                        self._transport_restart_after_quiet_reason = None
+                        continue
 
                 if self._quiet_reinit_pending:
                     try:
@@ -1103,10 +1152,36 @@ class TecomHub:
         except Exception as err:  # pragma: no cover - defensive logging
             _LOGGER.debug("Immediate panel ACK failed, falling back to async send: %s", err)
 
-        asyncio.create_task(self.async_send_bytes(payload, addr=peer if peer is not None else None))
+        async def _fallback() -> None:
+            try:
+                await self.async_send_bytes(payload, addr=peer if peer is not None else None)
+            except Exception:
+                _LOGGER.debug("Fallback panel ACK send failed", exc_info=True)
 
+        asyncio.create_task(_fallback())
 
+    def _schedule_followup_panel_ack(self, fr: proto.Frame, *, delay: float = 0.05) -> None:
+        key = (fr.seq, fr.body.hex())
+        now = asyncio.get_running_loop().time()
+        until = self._followup_ack_until.get(key, 0.0)
+        if until > now:
+            return
+        self._followup_ack_until[key] = now + 1.0
 
+        async def _runner() -> None:
+            try:
+                await asyncio.sleep(max(0.0, delay))
+                # Only send the extra ACK while the same event is clearly being retried.
+                self._send_panel_ack_immediate(fr)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug("Follow-up panel ACK send failed", exc_info=True)
+            finally:
+                if self._followup_ack_until.get(key, 0.0) <= asyncio.get_running_loop().time():
+                    self._followup_ack_until.pop(key, None)
+
+        asyncio.create_task(_runner())
 
     def _schedule_input_status_refresh(self, input_no: int, *, delay: float = 0.25) -> None:
         """Send a narrow input status query shortly after an input event.
@@ -1347,6 +1422,7 @@ class TecomHub:
                 code, obj = ev
                 loop_now = asyncio.get_running_loop().time()
                 self._last_unsolicited_event_monotonic = loop_now
+                self._note_unsolicited_event_burst()
                 # Any unsolicited event means the panel is actively streaming queue items.
                 # Back off normal polling briefly so ACKs/events can flow without extra chatter.
                 self._poll_backoff_until = max(self._poll_backoff_until, loop_now + 2.5)
@@ -1361,6 +1437,16 @@ class TecomHub:
                 # Suppress retransmitted duplicates on the HA event bus *and* avoid spawning
                 # extra targeted refreshes for the same repeated queue-head event.
                 repeat_count = self._note_panel_event_retransmit(fr)
+                if repeat_count > 1:
+                    self._last_repeated_event_key = (fr.seq, fr.body.hex())
+                    self._last_repeated_event_raw = fr.to_bytes().hex()
+                    self._last_repeated_event_code = code
+                    self._last_repeated_event_object = obj
+                    self._last_repeated_event_count = repeat_count
+                    # A second ACK shortly after a clearly retried queue-head event helps avoid
+                    # rare cases where the first ACK was accepted by the host stack but not
+                    # acted on by the panel quickly enough during an event burst.
+                    self._schedule_followup_panel_ack(fr, delay=0.05)
                 if repeat_count >= self._panel_retry_event_threshold:
                     self._enter_quiet_mode(
                         f"repeated panel event retries for code 0x{code:02X} object {obj}",
@@ -1484,8 +1570,15 @@ class TecomHub:
                     "next_idle_full_sync_monotonic": self._next_idle_full_sync_monotonic,
                     "transport_restart_pending": self._transport_restart_pending,
                     "transport_restart_reason": self._transport_restart_reason,
+                    "transport_restart_after_quiet": self._transport_restart_after_quiet,
+                    "transport_restart_after_quiet_reason": self._transport_restart_after_quiet_reason,
+                    "burst_guard_until": self._burst_guard_until,
                 },
                 "state": {
+                    "last_repeated_event_raw": self._last_repeated_event_raw,
+                    "last_repeated_event_code": self._last_repeated_event_code,
+                    "last_repeated_event_object": self._last_repeated_event_object,
+                    "last_repeated_event_count": self._last_repeated_event_count,
                     "last_event": self.state.last_event,
                     "last_event_code": self.state.last_event_code,
                     "last_event_object": self.state.last_event_object,
@@ -1519,10 +1612,18 @@ class TecomHub:
             raise TecomNotSupported("Full sync requires CTPlus mode")
         await self._async_initial_sync()
 
-    async def async_retrieve_events(self) -> None:
+    async def async_reset_comms_path_event_buffer(self) -> None:
         if self.mode != MODE_CTPLUS:
-            raise TecomNotSupported("Retrieve events requires CTPlus mode")
-        await self._send_command(proto.cmd_retrieve_events())
+            raise TecomNotSupported("Reset comms path event buffer requires CTPlus mode")
+        await self._send_command(proto.cmd_retrieve_events(), bypass_quiet=True)
+
+    async def async_retrieve_events(self) -> None:
+        """Backward-compatible alias for the old service name.
+
+        This command behaves like a maintenance reset/clear of the current comms-path
+        event buffer. It should not be used automatically during startup or normal runtime.
+        """
+        await self.async_reset_comms_path_event_buffer()
 
     def _clear_door_lock_runtime_state(self) -> None:
         """Drop cached door lock/secure state when explicitly requested.
@@ -1560,6 +1661,9 @@ class TecomHub:
         self._startup_backlog_drain = True
         self._quiet_mode_until = 0.0
         self._quiet_reason = None
+        self._burst_guard_until = 0.0
+        self._transport_restart_after_quiet = False
+        self._transport_restart_after_quiet_reason = None
         if self._idle_full_sync_enabled:
             self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
         else:

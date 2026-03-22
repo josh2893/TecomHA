@@ -9,7 +9,7 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.0.5 highlights
+## Version 3.0.6 highlights
 
 - Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
 - Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
@@ -519,7 +519,7 @@ Use it carefully, test thoroughly, and treat it as an evolving integration rathe
 - Door lock entities now expose richer debug attributes and prefer explicit lock/secure events over the raw door word when available.
 
 
-## v3.0.5 notes
+## v3.0.6 notes
 
 - CTPlus-style quiet idle behaviour by default: 60-second heartbeats and broad safety sync instead of continuous polling.
 - Automatic UDP transport/session rebuild if repeated panel retries continue during quiet mode.

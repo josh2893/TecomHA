@@ -64,6 +64,11 @@ def _ensure_services_registered(hass: HomeAssistant) -> None:
         for hub in _resolve_service_hubs(hass, entry_id):
             await hub.async_request_full_sync()
 
+    async def _async_reset_comms_path_event_buffer(call):
+        entry_id = call.data.get("entry_id")
+        for hub in _resolve_service_hubs(hass, entry_id):
+            await hub.async_reset_comms_path_event_buffer()
+
     async def _async_retrieve_events(call):
         entry_id = call.data.get("entry_id")
         for hub in _resolve_service_hubs(hass, entry_id):
@@ -83,6 +88,8 @@ def _ensure_services_registered(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, "dump_debug", _async_dump_debug)
     if not hass.services.has_service(DOMAIN, "request_full_sync"):
         hass.services.async_register(DOMAIN, "request_full_sync", _async_request_full_sync)
+    if not hass.services.has_service(DOMAIN, "reset_comms_path_event_buffer"):
+        hass.services.async_register(DOMAIN, "reset_comms_path_event_buffer", _async_reset_comms_path_event_buffer)
     if not hass.services.has_service(DOMAIN, "retrieve_events"):
         hass.services.async_register(DOMAIN, "retrieve_events", _async_retrieve_events)
     if not hass.services.has_service(DOMAIN, "reinitialize_session"):

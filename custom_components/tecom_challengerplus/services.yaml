@@ -26,9 +26,20 @@ request_full_sync:
       selector:
         text:
 
+reset_comms_path_event_buffer:
+  name: Reset comms path event buffer
+  description: Maintenance action. Sends the CTPlus maintenance command that clears/resets the current comms-path event buffer on the selected panel. Do not use this as part of normal startup/runtime.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id. Required when multiple Tecom panels are loaded.
+      required: false
+      selector:
+        text:
+
 retrieve_events:
-  name: Retrieve events
-  description: Manually send the CTPlus Retrieve events command to the selected panel.
+  name: Retrieve events (legacy alias)
+  description: Legacy alias for Reset comms path event buffer. This is a maintenance-only action and should not be used during normal startup/runtime.
   fields:
     entry_id:
       name: Entry ID
