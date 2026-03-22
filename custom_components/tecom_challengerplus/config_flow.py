@@ -56,6 +56,7 @@ from .const import (
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
+    CONF_RUNTIME_POLLING,
     CONF_PANEL_EXPORT_PATH,
     CONF_PANEL_EXPORT_RENAME_AREAS,
     CONF_PANEL_EXPORT_RENAME_INPUTS,
@@ -70,6 +71,7 @@ from .const import (
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
+    DEFAULT_RUNTIME_POLLING,
     DEFAULT_PANEL_EXPORT_PATH,
     DEFAULT_PANEL_EXPORT_RENAME_AREAS,
     DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
@@ -171,6 +173,7 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
     d.setdefault(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY)
+    d.setdefault(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING)
     d.setdefault(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH)
     d.setdefault(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS)
     d.setdefault(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS)
@@ -280,6 +283,7 @@ def _schema(defaults: dict) -> vol.Schema:
                 selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_DOOR_POLL_STARTUP_ONLY, default=bool(defaults.get(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLLING, default=bool(defaults.get(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING))): selector.BooleanSelector(),
         }
     )
 

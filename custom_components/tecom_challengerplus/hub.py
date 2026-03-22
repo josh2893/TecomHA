@@ -53,6 +53,7 @@ from .const import (
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
+    CONF_RUNTIME_POLLING,
     CONF_PANEL_EXPORT_PATH,
     CONF_PANEL_EXPORT_RENAME_AREAS,
     CONF_PANEL_EXPORT_RENAME_INPUTS,
@@ -68,6 +69,7 @@ from .const import (
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
+    DEFAULT_RUNTIME_POLLING,
     DEFAULT_PANEL_EXPORT_PATH,
     DEFAULT_PANEL_EXPORT_RENAME_AREAS,
     DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
@@ -200,6 +202,10 @@ class TecomHub:
         if isinstance(_door_poll_startup_only_cfg, str):
             _door_poll_startup_only_cfg = _door_poll_startup_only_cfg.strip().lower() in ("1", "true", "yes", "on")
         self.door_poll_startup_only: bool = bool(_door_poll_startup_only_cfg)
+        _runtime_polling_cfg = cfg.get(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING)
+        if isinstance(_runtime_polling_cfg, str):
+            _runtime_polling_cfg = _runtime_polling_cfg.strip().lower() in ("1", "true", "yes", "on")
+        self.runtime_polling: bool = bool(_runtime_polling_cfg)
 
         # Optional CTPlus export.panel import for friendly naming only.
         self.panel_export_path: str = str(cfg.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH) or "").strip()
@@ -332,7 +338,7 @@ class TecomHub:
         # quiet event-driven runtime behaviour. Mirror that here: do one broad sync after
         # backlog drain / reconnect, then stop routine full polling and rely on live events.
         # Manual full sync and reconnect recovery still reuse the same initial sync helper.
-        self._idle_full_sync_enabled: bool = False if self.mode == MODE_CTPLUS else True
+        self._idle_full_sync_enabled: bool = (self.runtime_polling if self.mode == MODE_CTPLUS else True)
         self._idle_full_sync_interval: float = max(float(self.poll_interval), 900.0) if self._idle_full_sync_enabled else 0.0
         self._next_idle_full_sync_monotonic: float = 0.0
         self._transport_restart_pending: bool = False
@@ -353,8 +359,8 @@ class TecomHub:
         # integration used to: typically around 6-25 ms rather than sub-millisecond.
         # Old Challenger panels appear happier with that steadier pacing during bursts,
         # so mirror CTPlus more closely here.
-        self._panel_ack_delay_seconds: float = 0.010 if self.mode == MODE_CTPLUS else 0.0
-        self._panel_followup_ack_delay_seconds: float = max(0.040, self._panel_ack_delay_seconds + 0.030)
+        self._panel_ack_delay_seconds: float = 0.025 if self.mode == MODE_CTPLUS else 0.0
+        self._panel_followup_ack_delay_seconds: float = 0.0
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -523,7 +529,7 @@ class TecomHub:
             self._retrieve_events_task.cancel()
         self._retrieve_events_task = None
 
-    def _enter_quiet_mode(self, reason: str, *, duration: float | None = None, reinitialize: bool = True) -> None:
+    def _enter_quiet_mode(self, reason: str, *, duration: float | None = None, reinitialize: bool = False) -> None:
         loop = asyncio.get_running_loop()
         now = loop.time()
         quiet_for = max(15.0, float(duration if duration is not None else self._quiet_mode_seconds))
@@ -1453,10 +1459,6 @@ class TecomHub:
                     self._last_repeated_event_code = code
                     self._last_repeated_event_object = obj
                     self._last_repeated_event_count = repeat_count
-                    # A second ACK shortly after a clearly retried queue-head event helps avoid
-                    # rare cases where the first ACK was accepted by the host stack but not
-                    # acted on by the panel quickly enough during an event burst.
-                    self._schedule_followup_panel_ack(fr)
                 if repeat_count >= self._panel_retry_event_threshold:
                     self._enter_quiet_mode(
                         f"repeated panel event retries for code 0x{code:02X} object {obj}",
@@ -1579,6 +1581,7 @@ class TecomHub:
                     "quiet_mode_until": self._quiet_mode_until,
                     "quiet_reason": self._quiet_reason,
                     "quiet_reinit_pending": self._quiet_reinit_pending,
+                    "runtime_polling": self.runtime_polling,
                     "idle_full_sync_enabled": self._idle_full_sync_enabled,
                     "idle_full_sync_interval": self._idle_full_sync_interval,
                     "next_idle_full_sync_monotonic": self._next_idle_full_sync_monotonic,

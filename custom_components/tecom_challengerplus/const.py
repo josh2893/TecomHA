@@ -71,6 +71,8 @@ CONF_MIN_SEND_INTERVAL_MS = "min_send_interval_ms"  # milliseconds between UDP f
 CONF_DOOR_STATUS_MODE = "door_status_mode"  # "round_robin" or "all_each_cycle"
 CONF_DOOR_STATUS_PER_CYCLE = "door_status_per_cycle"  # how many doors to poll per cycle when round-robin
 CONF_DOOR_POLL_STARTUP_ONLY = "door_poll_startup_only"  # only do broad door polling during initial startup sync
+CONF_RUNTIME_POLLING = "runtime_polling"  # continue broad polling after startup for non-event-driven objects
+DEFAULT_RUNTIME_POLLING = False
 
 DEFAULT_SEND_ACKS = True
 DEFAULT_SEND_HEARTBEATS = True

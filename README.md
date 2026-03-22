@@ -9,7 +9,7 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.0.8 highlights
+## Version 3.0.9 highlights
 
 - Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
 - Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
