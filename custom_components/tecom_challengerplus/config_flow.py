@@ -57,6 +57,11 @@ from .const import (
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
     CONF_RUNTIME_POLLING,
+    CONF_RUNTIME_POLL_INPUTS,
+    CONF_RUNTIME_POLL_AREAS,
+    CONF_RUNTIME_POLL_RELAYS,
+    CONF_RUNTIME_POLL_DOORS,
+    CONF_RUNTIME_POLL_RAS,
     CONF_PANEL_EXPORT_PATH,
     CONF_PANEL_EXPORT_RENAME_AREAS,
     CONF_PANEL_EXPORT_RENAME_INPUTS,
@@ -72,6 +77,11 @@ from .const import (
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
     DEFAULT_RUNTIME_POLLING,
+    DEFAULT_RUNTIME_POLL_INPUTS,
+    DEFAULT_RUNTIME_POLL_AREAS,
+    DEFAULT_RUNTIME_POLL_RELAYS,
+    DEFAULT_RUNTIME_POLL_DOORS,
+    DEFAULT_RUNTIME_POLL_RAS,
     DEFAULT_PANEL_EXPORT_PATH,
     DEFAULT_PANEL_EXPORT_RENAME_AREAS,
     DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
@@ -174,6 +184,12 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
     d.setdefault(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY)
     d.setdefault(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING)
+    legacy_runtime = bool(d.get(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING))
+    d.setdefault(CONF_RUNTIME_POLL_INPUTS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_INPUTS)
+    d.setdefault(CONF_RUNTIME_POLL_AREAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_AREAS)
+    d.setdefault(CONF_RUNTIME_POLL_RELAYS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RELAYS)
+    d.setdefault(CONF_RUNTIME_POLL_DOORS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_DOORS)
+    d.setdefault(CONF_RUNTIME_POLL_RAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RAS)
     d.setdefault(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH)
     d.setdefault(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS)
     d.setdefault(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS)
@@ -283,7 +299,11 @@ def _schema(defaults: dict) -> vol.Schema:
                 selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_DOOR_POLL_STARTUP_ONLY, default=bool(defaults.get(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY))): selector.BooleanSelector(),
-            vol.Optional(CONF_RUNTIME_POLLING, default=bool(defaults.get(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_INPUTS, default=bool(defaults.get(CONF_RUNTIME_POLL_INPUTS, DEFAULT_RUNTIME_POLL_INPUTS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_AREAS, default=bool(defaults.get(CONF_RUNTIME_POLL_AREAS, DEFAULT_RUNTIME_POLL_AREAS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_RELAYS, default=bool(defaults.get(CONF_RUNTIME_POLL_RELAYS, DEFAULT_RUNTIME_POLL_RELAYS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_DOORS, default=bool(defaults.get(CONF_RUNTIME_POLL_DOORS, DEFAULT_RUNTIME_POLL_DOORS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_RAS, default=bool(defaults.get(CONF_RUNTIME_POLL_RAS, DEFAULT_RUNTIME_POLL_RAS))): selector.BooleanSelector(),
         }
     )
 

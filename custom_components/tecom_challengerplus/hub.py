@@ -54,6 +54,11 @@ from .const import (
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
     CONF_RUNTIME_POLLING,
+    CONF_RUNTIME_POLL_INPUTS,
+    CONF_RUNTIME_POLL_AREAS,
+    CONF_RUNTIME_POLL_RELAYS,
+    CONF_RUNTIME_POLL_DOORS,
+    CONF_RUNTIME_POLL_RAS,
     CONF_PANEL_EXPORT_PATH,
     CONF_PANEL_EXPORT_RENAME_AREAS,
     CONF_PANEL_EXPORT_RENAME_INPUTS,
@@ -70,6 +75,11 @@ from .const import (
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
     DEFAULT_RUNTIME_POLLING,
+    DEFAULT_RUNTIME_POLL_INPUTS,
+    DEFAULT_RUNTIME_POLL_AREAS,
+    DEFAULT_RUNTIME_POLL_RELAYS,
+    DEFAULT_RUNTIME_POLL_DOORS,
+    DEFAULT_RUNTIME_POLL_RAS,
     DEFAULT_PANEL_EXPORT_PATH,
     DEFAULT_PANEL_EXPORT_RENAME_AREAS,
     DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
@@ -207,6 +217,19 @@ class TecomHub:
             _runtime_polling_cfg = _runtime_polling_cfg.strip().lower() in ("1", "true", "yes", "on")
         self.runtime_polling: bool = bool(_runtime_polling_cfg)
 
+        def _bool_cfg(name: str, default: bool) -> bool:
+            value = cfg.get(name, default)
+            if isinstance(value, str):
+                value = value.strip().lower() in ("1", "true", "yes", "on")
+            return bool(value)
+
+        legacy_runtime = self.runtime_polling
+        self.runtime_poll_inputs: bool = _bool_cfg(CONF_RUNTIME_POLL_INPUTS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_INPUTS)
+        self.runtime_poll_areas: bool = _bool_cfg(CONF_RUNTIME_POLL_AREAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_AREAS)
+        self.runtime_poll_relays: bool = _bool_cfg(CONF_RUNTIME_POLL_RELAYS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RELAYS)
+        self.runtime_poll_doors: bool = _bool_cfg(CONF_RUNTIME_POLL_DOORS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_DOORS)
+        self.runtime_poll_ras: bool = _bool_cfg(CONF_RUNTIME_POLL_RAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RAS)
+
         # Optional CTPlus export.panel import for friendly naming only.
         self.panel_export_path: str = str(cfg.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH) or "").strip()
         self.panel_export_rename_areas: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))
@@ -338,7 +361,7 @@ class TecomHub:
         # quiet event-driven runtime behaviour. Mirror that here: do one broad sync after
         # backlog drain / reconnect, then stop routine full polling and rely on live events.
         # Manual full sync and reconnect recovery still reuse the same initial sync helper.
-        self._idle_full_sync_enabled: bool = (self.runtime_polling if self.mode == MODE_CTPLUS else True)
+        self._idle_full_sync_enabled: bool = ((self.runtime_poll_inputs or self.runtime_poll_areas or self.runtime_poll_relays or self.runtime_poll_doors or self.runtime_poll_ras) if self.mode == MODE_CTPLUS else True)
         self._idle_full_sync_interval: float = max(float(self.poll_interval), 900.0) if self._idle_full_sync_enabled else 0.0
         self._next_idle_full_sync_monotonic: float = 0.0
         self._transport_restart_pending: bool = False
@@ -813,7 +836,7 @@ class TecomHub:
                         await asyncio.sleep(min(0.5, self._startup_backlog_quiet_seconds - quiet_for))
                         continue
                     try:
-                        await self._async_initial_sync()
+                        await self._async_initial_sync(runtime_only=True)
                     except Exception:
                         _LOGGER.debug("Initial sync after backlog drain failed (will retry)", exc_info=True)
                     else:
@@ -838,7 +861,7 @@ class TecomHub:
                     continue
 
                 try:
-                    await self._async_initial_sync()
+                    await self._async_initial_sync(runtime_only=True)
                 except Exception:
                     _LOGGER.debug("Idle safety sync failed (will retry)", exc_info=True)
                 finally:
@@ -881,7 +904,7 @@ class TecomHub:
             await self._send_command(proto.cmd_request_area_status(cur, count))
             cur += count
 
-    async def _async_initial_sync(self) -> None:
+    async def _async_initial_sync(self, runtime_only: bool = False) -> None:
         """Perform one broad status sync after backlog drain / on demand.
 
         When "door poll startup only" is enabled, the one-shot startup door sweep needs to be
@@ -890,25 +913,32 @@ class TecomHub:
         So for startup-only mode we do a few paced passes over the still-unknown DGP doors until
         they populate or we hit a small retry limit.
         """
-        if getattr(self, "input_poll_ranges", None):
+        poll_inputs = (not runtime_only) or self.runtime_poll_inputs
+        poll_relays = (not runtime_only) or self.runtime_poll_relays
+        poll_areas = (not runtime_only) or self.runtime_poll_areas
+        poll_ras = (not runtime_only) or self.runtime_poll_ras
+        poll_doors = (not runtime_only) or self.runtime_poll_doors
+
+        if poll_inputs and getattr(self, "input_poll_ranges", None):
             for rs, re_ in self.input_poll_ranges:
                 await self.async_request_inputs(rs, re_)
 
-        if getattr(self, "relay_poll_ranges", None):
+        if poll_relays and getattr(self, "relay_poll_ranges", None):
             for rs, re_ in self.relay_poll_ranges:
                 await self.async_request_relays(rs, re_)
 
-        if getattr(self, "areas_count", 0) and self.areas_count > 0:
+        if poll_areas and getattr(self, "areas_count", 0) and self.areas_count > 0:
             await self.async_request_areas(1, self.areas_count)
 
-        if getattr(self, 'ras_door_ids', None):
+        if poll_ras and getattr(self, 'ras_door_ids', None):
             for ras in self.ras_door_ids:
                 await self._send_command(proto.cmd_request_ras_status(ras))
 
-        if getattr(self, "door_poll_startup_only", False):
-            await self._async_startup_door_sweep()
-        else:
-            await self.async_request_doors(force_all=True)
+        if poll_doors:
+            if getattr(self, "door_poll_startup_only", False) and not runtime_only:
+                await self._async_startup_door_sweep()
+            else:
+                await self.async_request_doors(force_all=True)
 
         if self._idle_full_sync_enabled:
             self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
@@ -1582,6 +1612,11 @@ class TecomHub:
                     "quiet_reason": self._quiet_reason,
                     "quiet_reinit_pending": self._quiet_reinit_pending,
                     "runtime_polling": self.runtime_polling,
+                    "runtime_poll_inputs": self.runtime_poll_inputs,
+                    "runtime_poll_areas": self.runtime_poll_areas,
+                    "runtime_poll_relays": self.runtime_poll_relays,
+                    "runtime_poll_doors": self.runtime_poll_doors,
+                    "runtime_poll_ras": self.runtime_poll_ras,
                     "idle_full_sync_enabled": self._idle_full_sync_enabled,
                     "idle_full_sync_interval": self._idle_full_sync_interval,
                     "next_idle_full_sync_monotonic": self._next_idle_full_sync_monotonic,
