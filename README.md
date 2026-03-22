@@ -1,3 +1,4 @@
+<img width="1024" height="1024" alt="TECOM_HA_RETRO" src="https://github.com/user-attachments/assets/8b65a7a3-5711-412a-8aec-e02088c2652e" />
 # Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
