@@ -241,10 +241,6 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_ENCRYPTION_KEY, default=defaults.get(CONF_ENCRYPTION_KEY, "")): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
             ),
-            vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
-            ),
-
             # Optional CTPlus export.panel import for friendly naming.
             vol.Optional(CONF_PANEL_EXPORT_PATH, default=str(defaults.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH))): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
@@ -309,6 +305,9 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_DOOR_STATUS_MODE, default=str(defaults.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
             vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_RUNTIME_POLL_INPUTS, default=bool(defaults.get(CONF_RUNTIME_POLL_INPUTS, DEFAULT_RUNTIME_POLL_INPUTS))): selector.BooleanSelector(),
             vol.Optional(CONF_RUNTIME_POLL_AREAS, default=bool(defaults.get(CONF_RUNTIME_POLL_AREAS, DEFAULT_RUNTIME_POLL_AREAS))): selector.BooleanSelector(),

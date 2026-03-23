@@ -368,7 +368,7 @@ class TecomHub:
         # backlog drain / reconnect, then stop routine full polling and rely on live events.
         # Manual full sync and reconnect recovery still reuse the same initial sync helper.
         self._idle_full_sync_enabled: bool = ((self.runtime_poll_inputs or self.runtime_poll_areas or self.runtime_poll_relays or self.runtime_poll_doors or self.runtime_poll_ras) if self.mode == MODE_CTPLUS else True)
-        self._idle_full_sync_interval: float = max(float(self.poll_interval), 900.0) if self._idle_full_sync_enabled else 0.0
+        self._idle_full_sync_interval: float = max(float(self.poll_interval), 1.0) if self._idle_full_sync_enabled else 0.0
         self._next_idle_full_sync_monotonic: float = 0.0
         self._transport_restart_pending: bool = False
         self._transport_restart_reason: str | None = None
