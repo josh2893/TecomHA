@@ -53,6 +53,9 @@ from .const import (
     CONF_SEND_HEARTBEATS,
     CONF_HEARTBEAT_INTERVAL,
     CONF_MIN_SEND_INTERVAL_MS,
+    CONF_PANEL_ACK_DELAY_MS,
+    CONF_PANEL_FOLLOWUP_ACK_ENABLED,
+    CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_RUNTIME_POLLING,
@@ -72,6 +75,9 @@ from .const import (
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
+    DEFAULT_PANEL_ACK_DELAY_MS,
+    DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
+    DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_RUNTIME_POLLING,
@@ -178,6 +184,9 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS)
     d.setdefault(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS)
     d.setdefault(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS)
+    d.setdefault(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS)
+    d.setdefault(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED)
+    d.setdefault(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS)
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
     legacy_runtime = bool(d.get(CONF_RUNTIME_POLLING, False))
@@ -289,6 +298,13 @@ def _schema(defaults: dict) -> vol.Schema:
             ),
             vol.Optional(CONF_MIN_SEND_INTERVAL_MS, default=int(defaults.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=500, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_PANEL_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=100, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_PANEL_FOLLOWUP_ACK_ENABLED, default=bool(defaults.get(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED))): selector.BooleanSelector(),
+            vol.Optional(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=250, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_DOOR_STATUS_MODE, default=str(defaults.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
             vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(

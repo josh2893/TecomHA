@@ -45,7 +45,10 @@
           "runtime_poll_areas": "Enable runtime polling for areas",
           "runtime_poll_relays": "Enable runtime polling for relays",
           "runtime_poll_doors": "Enable runtime polling for doors",
-          "runtime_poll_ras": "Enable runtime polling for RAS"
+          "runtime_poll_ras": "Enable runtime polling for RAS",
+          "panel_ack_delay_ms": "Panel ACK delay (milliseconds)",
+          "panel_followup_ack_enabled": "Enable follow-up ACK for repeated retries",
+          "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)"
         },
         "data_description": {
           "host": "Example: 192.168.1.245",
@@ -68,12 +71,91 @@
           "runtime_poll_areas": "Enable only if you need periodic runtime area status refreshes.",
           "runtime_poll_relays": "Enable only if you need periodic runtime relay status refreshes.",
           "runtime_poll_doors": "Enable only if you want ongoing runtime door polling after startup.",
-          "runtime_poll_ras": "Enable only if you need periodic runtime RAS status refreshes."
+          "runtime_poll_ras": "Enable only if you need periodic runtime RAS status refreshes.",
+          "panel_ack_delay_ms": "CTPlus-style pacing for panel ACKs. Older Challenger panels may behave better with 20-25 ms instead of instant ACKs.",
+          "panel_followup_ack_enabled": "Optional extra ACK for repeated identical retries. Leave off unless you are testing whether a second ACK helps clear a stuck queue-head event.",
+          "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms."
         }
-      },
+      }
+    }
+  },
+  "options": {
+    "step": {
       "init": {
         "title": "Tecom ChallengerPlus options",
-        "description": "Update the integration settings. Startup sync always runs once after reconnect. Runtime polling options below are optional and only apply after startup."
+        "description": "Update the integration settings. Startup sync always runs once after reconnect. Runtime polling options below are optional and only apply after startup.",
+        "data": {
+          "mode": "Connection mode",
+          "host": "Panel IP address or hostname",
+          "transport": "Transport",
+          "tcp_role": "TCP role",
+          "send_port": "Panel port",
+          "listen_port": "Local listen port",
+          "bind_host": "Local bind address",
+          "account_code": "Account code",
+          "computer_password": "Computer password",
+          "auth_username": "Username",
+          "auth_password": "Password",
+          "encryption_type": "Encryption",
+          "encryption_key": "Encryption key",
+          "poll_interval": "Runtime polling interval (seconds)",
+          "panel_export_path": "CTPlus export.panel path",
+          "panel_export_rename_areas": "Import area names from export.panel",
+          "panel_export_rename_inputs": "Import input names from export.panel",
+          "panel_export_rename_doors": "Import door names from export.panel",
+          "panel_export_rename_relays": "Import relay names from export.panel",
+          "panel_export_rename_rases": "Import RAS names from export.panel",
+          "inputs_count": "Input count",
+          "input_ranges": "Input ranges",
+          "input_mapping_mode": "Input event mapping",
+          "areas_count": "Area count",
+          "door_first_number": "First door number",
+          "door_last_number": "Last door number",
+          "dgp_door_ranges": "DGP door ranges",
+          "ras_door_ranges": "RAS door numbers",
+          "relays_count": "Relay count",
+          "relay_ranges": "Relay ranges",
+          "send_acks": "Send panel ACKs",
+          "send_heartbeats": "Send heartbeats",
+          "heartbeat_interval": "Heartbeat interval (seconds)",
+          "min_send_interval_ms": "Minimum delay between host frames (ms)",
+          "door_status_mode": "Runtime door polling mode",
+          "door_status_per_cycle": "Doors polled per runtime cycle",
+          "runtime_poll_inputs": "Enable runtime polling for inputs",
+          "runtime_poll_areas": "Enable runtime polling for areas",
+          "runtime_poll_relays": "Enable runtime polling for relays",
+          "runtime_poll_doors": "Enable runtime polling for doors",
+          "runtime_poll_ras": "Enable runtime polling for RAS",
+          "panel_ack_delay_ms": "Panel ACK delay (milliseconds)",
+          "panel_followup_ack_enabled": "Enable follow-up ACK for repeated retries",
+          "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)"
+        },
+        "data_description": {
+          "host": "Example: 192.168.1.245",
+          "tcp_role": "Use Server only when the panel is configured to connect to Home Assistant.",
+          "poll_interval": "Used only for the runtime polling groups you enable below. Startup sync always runs once automatically.",
+          "panel_export_path": "Optional. Example: /config/export.panel",
+          "input_ranges": "Optional. Example: 1-16,21-24,49-56. Leave blank to use Input count.",
+          "areas_count": "Areas are polled as a contiguous range from 1 to this value.",
+          "door_last_number": "Set to 0 to disable doors completely.",
+          "dgp_door_ranges": "Optional. Example: 17-20,21-24,33-36. Leave blank to use the first/last door range.",
+          "ras_door_ranges": "Optional. Example: 3,6,8 or 1-16.",
+          "relay_ranges": "Optional. Example: 1-16,21-24,49-56. Leave blank to use Relay count.",
+          "send_acks": "Recommended for CTPlus / management software mode.",
+          "send_heartbeats": "Recommended for CTPlus / management software mode.",
+          "heartbeat_interval": "CTPlus-style event-driven paths generally work best with a slower heartbeat cadence.",
+          "min_send_interval_ms": "Higher values reduce traffic bursts but make manual controls feel slower.",
+          "door_status_mode": "Only used when runtime door polling is enabled. Startup door polling always runs once.",
+          "door_status_per_cycle": "Only used with Round-robin runtime door polling.",
+          "runtime_poll_inputs": "Useful for PIRs or other points that do not reliably generate live events.",
+          "runtime_poll_areas": "Enable only if you need periodic runtime area status refreshes.",
+          "runtime_poll_relays": "Enable only if you need periodic runtime relay status refreshes.",
+          "runtime_poll_doors": "Enable only if you want ongoing runtime door polling after startup.",
+          "runtime_poll_ras": "Enable only if you need periodic runtime RAS status refreshes.",
+          "panel_ack_delay_ms": "CTPlus-style pacing for panel ACKs. Older Challenger panels may behave better with 20-25 ms instead of instant ACKs.",
+          "panel_followup_ack_enabled": "Optional extra ACK for repeated identical retries. Leave off unless you are testing whether a second ACK helps clear a stuck queue-head event.",
+          "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms."
+        }
       }
     }
   }

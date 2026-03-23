@@ -50,6 +50,9 @@ from .const import (
     CONF_SEND_HEARTBEATS,
     CONF_HEARTBEAT_INTERVAL,
     CONF_MIN_SEND_INTERVAL_MS,
+    CONF_PANEL_ACK_DELAY_MS,
+    CONF_PANEL_FOLLOWUP_ACK_ENABLED,
+    CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
@@ -71,6 +74,9 @@ from .const import (
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
+    DEFAULT_PANEL_ACK_DELAY_MS,
+    DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
+    DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
@@ -378,12 +384,13 @@ class TecomHub:
         self._last_repeated_event_object: int | None = None
         self._last_repeated_event_count: int = 0
         self._followup_ack_until: dict[tuple[int, str], float] = {}
-        # CTPlus on-wire captures ACK panel 0x40 frames noticeably slower than this
-        # integration used to: typically around 6-25 ms rather than sub-millisecond.
-        # Old Challenger panels appear happier with that steadier pacing during bursts,
-        # so mirror CTPlus more closely here.
-        self._panel_ack_delay_seconds: float = 0.025 if self.mode == MODE_CTPLUS else 0.0
-        self._panel_followup_ack_delay_seconds: float = 0.0
+        # ACK pacing is configurable so older Challenger panels can be tuned to behave
+        # more like CTPlus on the wire without rebuilding the integration.
+        _ack_delay_ms = int(cfg.get(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS))
+        self._panel_ack_delay_seconds: float = (max(0, _ack_delay_ms) / 1000.0) if self.mode == MODE_CTPLUS else 0.0
+        self._panel_followup_ack_enabled: bool = _bool_cfg(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED)
+        _followup_ack_delay_ms = int(cfg.get(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS))
+        self._panel_followup_ack_delay_seconds: float = max(0, _followup_ack_delay_ms) / 1000.0
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -962,7 +969,9 @@ class TecomHub:
             await self._send_command(proto.cmd_door_status_init())
             self._door_status_inited = True
 
-        batch_size = max(1, min(int(self.door_status_per_cycle or 1), len(self.dgp_door_ids)))
+        # Startup bootstrap should stage doors one-by-one so older panels are not hit
+        # with a burst of door recalls immediately after reload.
+        batch_size = 1
         max_passes = max(3, len(self.dgp_door_ids) * 2)
 
         for _ in range(max_passes):
@@ -1501,6 +1510,8 @@ class TecomHub:
                         f"panel_retry_storm_code_0x{code:02X}_object_{obj}"
                     )
                 if repeat_count > 1:
+                    if self._panel_followup_ack_enabled:
+                        self._schedule_followup_panel_ack(fr)
                     # Keep duplicate-retry handling off the normal HA event/state path.
                     # Repeated queue-head retries are still tracked in diagnostics and
                     # quiet-mode logic, but do not generate extra entity churn or recorder
@@ -1604,6 +1615,7 @@ class TecomHub:
                     "heartbeat_interval": self.heartbeat_interval,
                     "min_send_interval_ms": self.min_send_interval_ms,
                     "panel_ack_delay_ms": round(self._panel_ack_delay_seconds * 1000.0, 3),
+                    "panel_followup_ack_enabled": bool(self._panel_followup_ack_enabled),
                     "panel_followup_ack_delay_ms": round(self._panel_followup_ack_delay_seconds * 1000.0, 3),
                     "dgp_door_ids": list(self.dgp_door_ids),
                     "ras_door_ids": list(self.ras_door_ids),
