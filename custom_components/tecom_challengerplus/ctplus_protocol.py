@@ -77,11 +77,36 @@ def parse_frame(data: bytes) -> Optional[Frame]:
     if recv_crc == crc16_modbus(data[1:-2]):
         return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body, has_ff=False, type_offset=type_offset)
 
-    # FF-marker form: a 0xFF byte appears at index 5 but is excluded from CRC.
+    # Legacy FF-marker form: a 0xFF byte appears immediately after the header and is
+    # excluded from CRC. Keep this for compatibility with earlier observed captures.
     if len(body) >= 1 and data[5] == 0xFF:
         body2 = data[6:-2]
         if recv_crc == crc16_modbus(data[1:5] + body2):
             return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body2, has_ff=True, type_offset=type_offset)
+
+    # Newer panel captures show CTPlus 0x40 event frames using a simple byte-stuffing
+    # rule after the header: a literal 0x5E inside the payload/CRC is transmitted as
+    # 0x5E 0xFF so it does not look like a new sync byte on the wire.
+    #
+    # Unstuff the bytes after the header before splitting body/CRC. This lets queue-head
+    # events such as ...5E FF 96... or ...5E FF <crc_lo> parse cleanly and reach the
+    # normal ACK/event path instead of falling through to the raw-only path.
+    stuffed_tail = data[5:]
+    if b"\x5e\xff" in stuffed_tail:
+        unstuffed_tail = stuffed_tail.replace(b"\x5e\xff", b"\x5e")
+        if len(unstuffed_tail) >= 2:
+            recv_crc2 = int.from_bytes(unstuffed_tail[-2:], "little")
+            body3 = unstuffed_tail[:-2]
+            if recv_crc2 == crc16_modbus(data[1:5] + body3):
+                return Frame(
+                    msg_type=msg_type,
+                    seq=seq,
+                    flag1=flag1,
+                    flag2=flag2,
+                    body=body3,
+                    has_ff=False,
+                    type_offset=type_offset,
+                )
 
     return None
 

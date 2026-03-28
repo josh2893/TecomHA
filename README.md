@@ -9,8 +9,10 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.1.7 highlights
+## Version 3.1.8 highlights
 
+- CTPlus parser now understands the observed **byte-stuffed `5E FF` event frames** used by some queued panel events, so those events reach the normal decode + ACK path instead of getting stuck on the raw-only path.
+- This specifically targets queue-head events that previously appeared on `tecom_challengerplus_raw` but were never ACKed, causing the comms path event queue to stop draining.
 - Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
 - Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
 - Debug dumps now show whether idle full sync is enabled so it is easy to confirm the quieter CTPlus-style runtime is active.
