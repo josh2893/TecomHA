@@ -9,7 +9,7 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.1.6 highlights
+## Version 3.1.7 highlights
 
 - Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
 - Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
@@ -212,9 +212,9 @@ Important behavior:
 - entity IDs and unique IDs are left alone; only the friendly/display names change
 
 Example:
-- `Door 17` can become `Door 17 - Front Door`
-- `Input 19` can become `Input 19 - Front Door Egress`
-- `Area 2` can become `Area 2 - Shed`
+- `Door 17` can become `Door 17 - Front Door - 17B`
+- `Input 19` can become `Input 19 - Front Door Egress - 17B`
+- `Area 2` can become `Area 2 - Shed 17B Nimrod`
 
 Imported names are prefixed this way on purpose so Home Assistant keeps doors, inputs and other objects grouped and sorted by their panel numbers instead of alphabetically by description alone.
 

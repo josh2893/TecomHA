@@ -1174,7 +1174,18 @@ class TecomHub:
             if off != self._type_offset:
                 self._type_offset = off
             self._type_offset_known = True
-            self._handle_ctplus_frame(fr)
+            self._fire_raw_frame_event(fr, addr)
+            try:
+                self._handle_ctplus_frame(fr)
+            except Exception:
+                _LOGGER.exception(
+                    "Unhandled exception while processing CTPlus frame type=0x%02X seq=0x%02X body=%s",
+                    fr.msg_type,
+                    fr.seq,
+                    fr.body.hex(),
+                )
+                self.state.last_event = f"CTPlus handler exception type 0x{fr.msg_type:02X} seq 0x{fr.seq:02X}"
+                self._notify()
 
         # If there's leftover bytes that didn't parse, surface them for troubleshooting.
         if rem and rem != data:
@@ -1189,6 +1200,26 @@ class TecomHub:
         """
         self._send_panel_ack(fr)
 
+    def _fire_raw_frame_event(self, fr: proto.Frame, addr=None) -> None:  # noqa: ANN001
+        """Expose every parsed CTPlus frame on the raw event bus for troubleshooting."""
+        try:
+            raw_bytes = fr.to_bytes()
+        except Exception:
+            raw_bytes = b""
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_raw",
+            {
+                "hex": raw_bytes.hex() if raw_bytes else fr.body.hex(),
+                "len": len(raw_bytes) if raw_bytes else len(fr.body),
+                "body_hex": fr.body.hex(),
+                "body_len": len(fr.body),
+                "seq": fr.seq,
+                "msg_type": fr.msg_type,
+                "type_offset": getattr(fr, 'type_offset', self._type_offset),
+                "peer": str(addr if addr is not None else self._udp_last_peer),
+            },
+        )
+
     def _send_panel_ack(self, fr: proto.Frame, *, delay: float | None = None, note: str = 'panel_ack') -> None:
         if not self.send_acks:
             return
@@ -1199,6 +1230,16 @@ class TecomHub:
         ).to_bytes()
         peer = self._udp_last_peer
         ack_delay = self._panel_ack_delay_seconds if delay is None else max(0.0, float(delay))
+        loop = asyncio.get_running_loop()
+
+        def _record_ack_send() -> None:
+            self._debug_frames.append({
+                'ts': time.time(),
+                'dir': 'tx',
+                'peer': str(peer),
+                'hex': payload.hex(),
+                'note': note,
+            })
 
         def _try_nowait_send() -> bool:
             try:
@@ -1212,26 +1253,27 @@ class TecomHub:
                 _LOGGER.debug("Panel ACK nowait send failed, falling back to async send: %s", err)
             return False
 
-        async def _runner() -> None:
+        def _dispatch_nowait() -> None:
             try:
-                if ack_delay > 0:
-                    await asyncio.sleep(ack_delay)
-                self._debug_frames.append({
-                    'ts': time.time(),
-                    'dir': 'tx',
-                    'peer': str(peer),
-                    'hex': payload.hex(),
-                    'note': note,
-                })
+                _record_ack_send()
                 if _try_nowait_send():
                     return
-                await self.async_send_bytes(payload, addr=peer if peer is not None else None)
-            except asyncio.CancelledError:
-                raise
+                async def _fallback_async_send() -> None:
+                    try:
+                        await self.async_send_bytes(payload, addr=peer if peer is not None else None)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        _LOGGER.debug("Panel ACK async fallback send failed", exc_info=True)
+                asyncio.create_task(_fallback_async_send())
             except Exception:
                 _LOGGER.debug("Panel ACK send failed", exc_info=True)
 
-        asyncio.create_task(_runner())
+        if ack_delay <= 0:
+            _dispatch_nowait()
+            return
+
+        loop.call_later(ack_delay, _dispatch_nowait)
 
     def _schedule_followup_panel_ack(self, fr: proto.Frame, *, delay: float | None = None) -> None:
         key = (fr.seq, fr.body.hex())
@@ -1600,7 +1642,6 @@ class TecomHub:
 
             # Unknown 0x40 frame (data but not parsed)
             self.state.last_event = f"CTPlus 0x40 {fr.body.hex()}"
-            self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": fr.body.hex(), "len": len(fr.body)})
             self._notify()
             return
 
