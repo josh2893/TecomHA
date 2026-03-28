@@ -48,7 +48,8 @@
           "runtime_poll_ras": "Enable runtime polling for RAS",
           "panel_ack_delay_ms": "Panel ACK delay (milliseconds)",
           "panel_followup_ack_enabled": "Enable follow-up ACK for repeated retries",
-          "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)"
+          "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)",
+          "quiet_mode_enabled": "Enable quiet-mode retry backoff"
         },
         "data_description": {
           "host": "Example: 192.168.1.245",
@@ -74,7 +75,8 @@
           "runtime_poll_ras": "Enable only if you need periodic runtime RAS status refreshes.",
           "panel_ack_delay_ms": "CTPlus-style pacing for panel ACKs. Older Challenger panels may behave better with 20-25 ms instead of instant ACKs.",
           "panel_followup_ack_enabled": "Optional extra ACK for repeated identical retries. Leave off unless you are testing whether a second ACK helps clear a stuck queue-head event.",
-          "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms."
+          "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms.",
+          "quiet_mode_enabled": "Turn this off if you do not want the integration to suppress recalls during repeated panel retry storms. Disabling it can help troubleshooting, but it also removes the current CTPlus-style backoff behaviour."
         }
       }
     }
@@ -128,7 +130,8 @@
           "runtime_poll_ras": "Enable runtime polling for RAS",
           "panel_ack_delay_ms": "Panel ACK delay (milliseconds)",
           "panel_followup_ack_enabled": "Enable follow-up ACK for repeated retries",
-          "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)"
+          "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)",
+          "quiet_mode_enabled": "Enable quiet-mode retry backoff"
         },
         "data_description": {
           "host": "Example: 192.168.1.245",
@@ -154,7 +157,8 @@
           "runtime_poll_ras": "Enable only if you need periodic runtime RAS status refreshes.",
           "panel_ack_delay_ms": "CTPlus-style pacing for panel ACKs. Older Challenger panels may behave better with 20-25 ms instead of instant ACKs.",
           "panel_followup_ack_enabled": "Optional extra ACK for repeated identical retries. Leave off unless you are testing whether a second ACK helps clear a stuck queue-head event.",
-          "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms."
+          "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms.",
+          "quiet_mode_enabled": "Turn this off if you do not want the integration to suppress recalls during repeated panel retry storms. Disabling it can help troubleshooting, but it also removes the current CTPlus-style backoff behaviour."
         }
       }
     }

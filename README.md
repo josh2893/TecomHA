@@ -9,11 +9,14 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.0.9 highlights
+## Version 3.1.6 highlights
 
 - Startup and reconnect now do **one controlled full state sync**, then the integration stays **event-driven during normal idle runtime** instead of continuing routine broad polling.
 - Routine idle safety syncs are now **disabled** for CTPlus mode. Manual full sync and recovery reinitialisation still work when needed.
 - Debug dumps now show whether idle full sync is enabled so it is easy to confirm the quieter CTPlus-style runtime is active.
+- New **Quiet mode enabled** toggle in both the initial config flow and the edit-options screen.
+  - Leave it on for the current retry/backoff behaviour.
+  - Turn it off if you want Home Assistant to stop suppressing recalls during retry storms.
 - New **session quiet-mode recovery** for CTPlus-style comms path protection.
   - When the same queued panel event is retried repeatedly, the integration now stops host-initiated recalls for a while and leaves only heartbeats + immediate event ACKs running.
   - This is designed to mimic CTPlus/ARES behaviour more closely when the panel is under retry pressure.

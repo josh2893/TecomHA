@@ -56,6 +56,7 @@ from .const import (
     CONF_PANEL_ACK_DELAY_MS,
     CONF_PANEL_FOLLOWUP_ACK_ENABLED,
     CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    CONF_QUIET_MODE_ENABLED,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_RUNTIME_POLLING,
@@ -78,6 +79,7 @@ from .const import (
     DEFAULT_PANEL_ACK_DELAY_MS,
     DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
     DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    DEFAULT_QUIET_MODE_ENABLED,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_RUNTIME_POLLING,
@@ -187,6 +189,7 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS)
     d.setdefault(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED)
     d.setdefault(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS)
+    d.setdefault(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
     legacy_runtime = bool(d.get(CONF_RUNTIME_POLLING, False))
@@ -302,6 +305,7 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=250, mode=selector.NumberSelectorMode.BOX)
             ),
+            vol.Optional(CONF_QUIET_MODE_ENABLED, default=bool(defaults.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED))): selector.BooleanSelector(),
             vol.Optional(CONF_DOOR_STATUS_MODE, default=str(defaults.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
             vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)

@@ -53,6 +53,7 @@ from .const import (
     CONF_PANEL_ACK_DELAY_MS,
     CONF_PANEL_FOLLOWUP_ACK_ENABLED,
     CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    CONF_QUIET_MODE_ENABLED,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
@@ -77,6 +78,7 @@ from .const import (
     DEFAULT_PANEL_ACK_DELAY_MS,
     DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
     DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    DEFAULT_QUIET_MODE_ENABLED,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
@@ -353,6 +355,7 @@ class TecomHub:
         self._last_unsolicited_event_monotonic: float = 0.0
         self._startup_backlog_quiet_seconds: float = 2.5
         self._startup_backlog_max_seconds: float = 20.0
+        self.quiet_mode_enabled: bool = _bool_cfg(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
         # Quiet-mode recovery: when the panel starts retrying the same queue-head event
         # or returns short error-style replies, stop host-initiated recalls for a while and
         # let only heartbeats + immediate panel ACKs flow. This matches CTPlus/ARES style
@@ -525,6 +528,8 @@ class TecomHub:
                 _LOGGER.exception("Listener error")
 
     def _in_quiet_mode(self) -> bool:
+        if not self.quiet_mode_enabled:
+            return False
         return asyncio.get_running_loop().time() < self._quiet_mode_until
 
     def _in_burst_guard(self) -> bool:
@@ -560,6 +565,18 @@ class TecomHub:
         self._retrieve_events_task = None
 
     def _enter_quiet_mode(self, reason: str, *, duration: float | None = None, reinitialize: bool = False) -> None:
+        if not self.quiet_mode_enabled:
+            self._quiet_mode_until = 0.0
+            self._quiet_reason = None
+            self._quiet_reinit_pending = False
+            self._debug_frames.append({
+                'ts': time.time(),
+                'dir': 'note',
+                'peer': str(self._udp_last_peer),
+                'hex': '',
+                'note': f'quiet_mode_skipped_disabled:{reason}',
+            })
+            return
         loop = asyncio.get_running_loop()
         now = loop.time()
         quiet_for = max(15.0, float(duration if duration is not None else self._quiet_mode_seconds))
@@ -1622,6 +1639,7 @@ class TecomHub:
                     "input_ids": list(self.input_ids),
                     "areas_count": self.areas_count,
                     "input_mapping_mode": self.input_mapping_mode,
+                    "quiet_mode_enabled": self.quiet_mode_enabled,
                     "quiet_mode_until": self._quiet_mode_until,
                     "quiet_reason": self._quiet_reason,
                     "quiet_reinit_pending": self._quiet_reinit_pending,
