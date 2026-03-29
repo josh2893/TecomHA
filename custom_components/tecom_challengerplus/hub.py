@@ -54,6 +54,8 @@ from .const import (
     CONF_PANEL_FOLLOWUP_ACK_ENABLED,
     CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
     CONF_QUIET_MODE_ENABLED,
+    CONF_PERIODIC_SESSION_REFRESH_ENABLED,
+    CONF_PERIODIC_SESSION_REFRESH_HOURS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
@@ -79,6 +81,8 @@ from .const import (
     DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
     DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
     DEFAULT_QUIET_MODE_ENABLED,
+    DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED,
+    DEFAULT_PERIODIC_SESSION_REFRESH_HOURS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
@@ -356,6 +360,17 @@ class TecomHub:
         self._startup_backlog_quiet_seconds: float = 2.5
         self._startup_backlog_max_seconds: float = 20.0
         self.quiet_mode_enabled: bool = _bool_cfg(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
+        self.periodic_session_refresh_enabled: bool = _bool_cfg(CONF_PERIODIC_SESSION_REFRESH_ENABLED, DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED) if self.mode == MODE_CTPLUS else False
+        _refresh_hours_cfg = cfg.get(CONF_PERIODIC_SESSION_REFRESH_HOURS, DEFAULT_PERIODIC_SESSION_REFRESH_HOURS)
+        try:
+            _refresh_hours = float(_refresh_hours_cfg)
+        except (TypeError, ValueError):
+            _refresh_hours = float(DEFAULT_PERIODIC_SESSION_REFRESH_HOURS)
+        self.periodic_session_refresh_hours: float = max(1.0, _refresh_hours)
+        self._periodic_session_refresh_interval: float = self.periodic_session_refresh_hours * 3600.0 if self.periodic_session_refresh_enabled else 0.0
+        self._next_periodic_session_refresh_monotonic: float = 0.0
+        self._last_periodic_session_refresh_monotonic: float = 0.0
+        self._last_periodic_session_refresh_reason: str | None = None
         # Quiet-mode recovery: when the panel starts retrying the same queue-head event
         # or returns short error-style replies, stop host-initiated recalls for a while and
         # let only heartbeats + immediate panel ACKs flow. This matches CTPlus/ARES style
@@ -553,6 +568,36 @@ class TecomHub:
                     "note": f"burst_guard:{len(self._burst_event_times)}",
                 })
 
+    def _schedule_next_periodic_session_refresh(self, now: float | None = None, *, delay: float | None = None) -> None:
+        if not self.periodic_session_refresh_enabled or self.mode != MODE_CTPLUS:
+            self._next_periodic_session_refresh_monotonic = 0.0
+            return
+        loop_now = asyncio.get_running_loop().time() if now is None else now
+        interval = max(300.0, float(delay if delay is not None else self._periodic_session_refresh_interval))
+        self._next_periodic_session_refresh_monotonic = loop_now + interval
+
+    async def _async_run_periodic_session_refresh(self, reason: str = "scheduled") -> None:
+        if not self.periodic_session_refresh_enabled or self.mode != MODE_CTPLUS:
+            return
+        now = asyncio.get_running_loop().time()
+        self._debug_frames.append({
+            "ts": time.time(),
+            "dir": "note",
+            "peer": str(self._udp_last_peer),
+            "hex": "",
+            "note": f"periodic_session_refresh:{reason}",
+        })
+        try:
+            await self.async_reinitialize_session(log_errors=False)
+        except Exception:
+            _LOGGER.debug("Periodic CTPlus session refresh failed", exc_info=True)
+            retry_delay = min(900.0, max(300.0, self._periodic_session_refresh_interval * 0.25 if self._periodic_session_refresh_interval else 300.0))
+            self._schedule_next_periodic_session_refresh(now, delay=retry_delay)
+            return
+        self._last_periodic_session_refresh_monotonic = now
+        self._last_periodic_session_refresh_reason = reason
+        self._schedule_next_periodic_session_refresh(now)
+
     def _cancel_pending_refresh_tasks(self) -> None:
         for task in list(self._input_refresh_tasks.values()):
             task.cancel()
@@ -633,6 +678,7 @@ class TecomHub:
             self._startup_backlog_started_monotonic = asyncio.get_running_loop().time()
             self._last_unsolicited_event_monotonic = self._startup_backlog_started_monotonic
             self._startup_backlog_drain = True
+            self._schedule_next_periodic_session_refresh(self._startup_backlog_started_monotonic)
 
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -658,6 +704,7 @@ class TecomHub:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         self._door_refresh_tasks.clear()
+        self._next_periodic_session_refresh_monotonic = 0.0
 
         if self._transport_obj:
             await self._transport_obj.async_stop()
@@ -850,6 +897,18 @@ class TecomHub:
                         self._startup_backlog_started_monotonic = asyncio.get_running_loop().time()
                         self._last_unsolicited_event_monotonic = self._startup_backlog_started_monotonic
                         self._startup_backlog_drain = True
+                    await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
+                    continue
+
+                if (
+                    self.periodic_session_refresh_enabled
+                    and self.mode == MODE_CTPLUS
+                    and self._next_periodic_session_refresh_monotonic > 0.0
+                    and now >= self._next_periodic_session_refresh_monotonic
+                    and not self._startup_backlog_drain
+                    and now >= self._poll_backoff_until
+                ):
+                    await self._async_run_periodic_session_refresh("scheduled")
                     await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
                     continue
 
@@ -1681,6 +1740,12 @@ class TecomHub:
                     "areas_count": self.areas_count,
                     "input_mapping_mode": self.input_mapping_mode,
                     "quiet_mode_enabled": self.quiet_mode_enabled,
+                    "periodic_session_refresh_enabled": self.periodic_session_refresh_enabled,
+                    "periodic_session_refresh_hours": self.periodic_session_refresh_hours,
+                    "periodic_session_refresh_interval": self._periodic_session_refresh_interval,
+                    "next_periodic_session_refresh_monotonic": self._next_periodic_session_refresh_monotonic,
+                    "last_periodic_session_refresh_monotonic": self._last_periodic_session_refresh_monotonic,
+                    "last_periodic_session_refresh_reason": self._last_periodic_session_refresh_reason,
                     "quiet_mode_until": self._quiet_mode_until,
                     "quiet_reason": self._quiet_reason,
                     "quiet_reinit_pending": self._quiet_reinit_pending,
@@ -1793,6 +1858,7 @@ class TecomHub:
             self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
         else:
             self._next_idle_full_sync_monotonic = 0.0
+        self._schedule_next_periodic_session_refresh(now)
 
     # -------------------------
     # Control helpers
