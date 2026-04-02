@@ -333,7 +333,19 @@ class TecomHub:
         self.door_ids = self.dgp_door_ids + self.ras_door_ids
 
         # Debug ring buffer (last N frames).
-        self._debug_frames = deque(maxlen=300)
+        self._debug_frame_limit: int = 1200
+        self._debug_frames = deque(maxlen=self._debug_frame_limit)
+        self._pending_host_frames: dict[int, dict] = {}
+        self._pending_panel_events: dict[tuple[int, str], float] = {}
+        self._recent_panel_ack_rtt_ms: deque[float] = deque(maxlen=64)
+        self._recent_command_ack_rtt_ms: deque[float] = deque(maxlen=64)
+        self._recent_heartbeat_ack_rtt_ms: deque[float] = deque(maxlen=64)
+        self._recent_panel_event_ack_latency_ms: deque[float] = deque(maxlen=64)
+        self._last_panel_ack_rtt_ms: float | None = None
+        self._last_command_ack_rtt_ms: float | None = None
+        self._last_heartbeat_ack_rtt_ms: float | None = None
+        self._last_panel_event_ack_latency_ms: float | None = None
+        self._last_panel_event_ack_scheduled_delay_ms: float | None = None
         # Retransmitted panel events can repeat if the ACK is not seen quickly enough.
         # Keep a short cache so duplicates do not flood the HA event bus.
         self._recent_event_keys: dict[tuple[int, str], float] = {}
@@ -401,6 +413,9 @@ class TecomHub:
         self._last_repeated_event_code: int | None = None
         self._last_repeated_event_object: int | None = None
         self._last_repeated_event_count: int = 0
+        self._last_repeated_event_decoded: dict | None = None
+        self._last_repeated_event_first_seen_monotonic: float = 0.0
+        self._last_repeated_event_last_seen_monotonic: float = 0.0
         self._followup_ack_until: dict[tuple[int, str], float] = {}
         # ACK pacing is configurable so older Challenger panels can be tuned to behave
         # more like CTPlus on the wire without rebuilding the integration.
@@ -816,7 +831,7 @@ class TecomHub:
 
     async def _send_frame(self, frame: proto.Frame) -> None:
         payload = frame.to_bytes()
-        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex()})
+        self._track_tx_frame(frame, payload, self._udp_last_peer)
         await self.async_send_bytes(payload)
 
     async def _send_frame_paced(self, frame: proto.Frame) -> None:
@@ -1216,7 +1231,7 @@ class TecomHub:
             self._handle_ctplus_frame(fr)
 
     def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
-        self._debug_frames.append({'ts': time.time(), 'dir': 'rx', 'peer': str(addr), 'hex': data.hex()})
+        self._debug_append({'dir': 'rx', 'peer': str(addr), 'hex': data.hex(), 'datagram_len': len(data), 'parsed_kind': 'udp_datagram'})
         if addr is not None:
             self._udp_last_peer = addr
         # UDP datagrams can contain multiple CTPlus frames.
@@ -1233,6 +1248,7 @@ class TecomHub:
             if off != self._type_offset:
                 self._type_offset = off
             self._type_offset_known = True
+            self._track_rx_frame(fr, addr)
             self._fire_raw_frame_event(fr, addr)
             try:
                 self._handle_ctplus_frame(fr)
@@ -1279,6 +1295,170 @@ class TecomHub:
             },
         )
 
+    def _debug_append(self, entry: dict) -> None:
+        entry.setdefault('ts', time.time())
+        try:
+            entry.setdefault('monotonic', asyncio.get_running_loop().time())
+        except RuntimeError:
+            entry.setdefault('monotonic', time.monotonic())
+        self._debug_frames.append(entry)
+
+    @staticmethod
+    def _msg_type_name(msg_type: int) -> str:
+        return {
+            proto.TYPE_EVENT_OR_DATA: 'event_or_data',
+            proto.TYPE_COMMAND: 'command',
+            proto.TYPE_PANEL_ACK: 'panel_ack',
+            proto.TYPE_HOST_ACK: 'host_ack',
+            proto.TYPE_HOST_HEARTBEAT: 'heartbeat',
+            0x49: 'panel_error',
+        }.get(msg_type, f'type_0x{msg_type:02X}')
+
+    @staticmethod
+    def _mean_ms(values: deque[float] | list[float]) -> float | None:
+        if not values:
+            return None
+        return round(sum(values) / len(values), 3)
+
+    def _command_name(self, body: bytes) -> str:
+        if not body:
+            return 'empty'
+        if body.startswith(proto.cmd_retrieve_events()):
+            return 'retrieve_events'
+        if len(body) == 6 and body[:2] == b'\x09\x04':
+            start = int.from_bytes(body[2:4], 'little')
+            end = int.from_bytes(body[4:6], 'little')
+            return f'request_input_status:{start}-{end}'
+        if len(body) == 6 and body[:2] == b'\x66\x04':
+            start = int.from_bytes(body[2:4], 'little')
+            end = int.from_bytes(body[4:6], 'little')
+            return f'request_relay_status:{start}-{end}'
+        if len(body) == 4 and body[:2] == b'\x60\x02':
+            return f'request_area_status:start_{body[2]}:count_{body[3]}'
+        if len(body) == 4 and body[:3] == b'\x04\x02\x04':
+            return f'open_door:{body[3]}'
+        if len(body) == 5 and body[:2] == b'\x03\x03':
+            action = body[2]
+            relay = int.from_bytes(body[3:5], 'little')
+            action_name = 'set' if action == 0x02 else 'reset' if action == 0x01 else f'action_0x{action:02X}'
+            return f'set_relay:{relay}:{action_name}'
+        if len(body) == 4 and body[:2] == b'\x02\x02':
+            action = body[2]
+            area = body[3]
+            action_name = {0x05: 'disarm', 0x06: 'arm_away', 0x09: 'arm_home'}.get(action, f'action_0x{action:02X}')
+            return f'set_area:{area}:{action_name}'
+        if len(body) == 9 and body[:2] == b'\x7e\x07' and body[5:8] == b'\x00\x68\x01':
+            return f'request_door_status:{body[8]}'
+        return f'body:{body[:2].hex()}'
+
+    def _frame_summary(self, fr: proto.Frame) -> dict:
+        summary = {
+            'msg_type': fr.msg_type,
+            'msg_type_hex': f'0x{fr.msg_type:02X}',
+            'msg_type_name': self._msg_type_name(fr.msg_type),
+            'seq': fr.seq,
+            'seq_hex': f'0x{fr.seq:02X}',
+            'type_offset': getattr(fr, 'type_offset', self._type_offset),
+            'has_ff': bool(getattr(fr, 'has_ff', False)),
+            'body_hex': fr.body.hex(),
+            'body_len': len(fr.body),
+        }
+        if fr.msg_type == proto.TYPE_COMMAND:
+            summary['command_name'] = self._command_name(fr.body)
+        elif fr.msg_type == proto.TYPE_HOST_HEARTBEAT:
+            summary['command_name'] = 'heartbeat'
+        elif fr.msg_type == proto.TYPE_HOST_ACK:
+            summary['command_name'] = 'host_ack'
+        elif fr.msg_type == proto.TYPE_PANEL_ACK:
+            summary['command_name'] = 'panel_ack'
+        if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
+            resp_in = proto.parse_input_status_response(fr.body)
+            resp_rel = proto.parse_relay_status_response(fr.body)
+            resp_area = proto.parse_area_status_response(fr.body)
+            resp_door = proto.parse_door_status_response(fr.body)
+            resp_ras = proto.parse_ras_status_response(fr.body)
+            ev = proto.parse_event(fr.body)
+            if resp_in:
+                start, statuses = resp_in
+                summary['parsed_kind'] = 'input_status_response'
+                summary['parsed_range'] = f'{start}-{start + len(statuses) - 1}'
+            elif resp_rel:
+                start, statuses = resp_rel
+                summary['parsed_kind'] = 'relay_status_response'
+                summary['parsed_range'] = f'{start}-{start + len(statuses) - 1}'
+            elif resp_area:
+                start, words = resp_area
+                summary['parsed_kind'] = 'area_status_response'
+                summary['parsed_range'] = f'{start}-{start + len(words) - 1}'
+            elif resp_door:
+                door, status = resp_door
+                summary['parsed_kind'] = 'door_status_response'
+                summary['door'] = door
+                summary['door_status_word'] = f'0x{status:04X}'
+            elif resp_ras:
+                ras, status = resp_ras
+                summary['parsed_kind'] = 'ras_status_response'
+                summary['ras'] = ras
+                summary['ras_status'] = f'0x{status:02X}'
+            elif ev:
+                code, obj = ev
+                summary['parsed_kind'] = 'event'
+                summary['event'] = decode_ctplus_event(code, obj, fr.body.hex())
+            else:
+                summary['parsed_kind'] = 'unclassified_data'
+        return summary
+
+    def _track_tx_frame(self, fr: proto.Frame, payload: bytes, peer, *, note: str | None = None, extra: dict | None = None) -> None:
+        entry = {
+            'dir': 'tx',
+            'peer': str(peer),
+            'hex': payload.hex(),
+            **self._frame_summary(fr),
+        }
+        if note:
+            entry['note'] = note
+        if extra:
+            entry.update(extra)
+        self._debug_append(entry)
+        if fr.msg_type in (proto.TYPE_COMMAND, proto.TYPE_HOST_HEARTBEAT):
+            self._pending_host_frames[fr.seq] = {
+                'monotonic': entry['monotonic'],
+                'ts': entry['ts'],
+                'msg_type': fr.msg_type,
+                'msg_type_name': entry.get('msg_type_name'),
+                'command_name': entry.get('command_name'),
+                'hex': payload.hex(),
+                'body_hex': fr.body.hex(),
+            }
+
+    def _track_rx_frame(self, fr: proto.Frame, addr=None) -> None:  # noqa: ANN001
+        entry = {
+            'dir': 'rx',
+            'peer': str(addr if addr is not None else self._udp_last_peer),
+            'hex': fr.to_bytes().hex(),
+            **self._frame_summary(fr),
+        }
+        if fr.msg_type == proto.TYPE_PANEL_ACK:
+            pending = self._pending_host_frames.pop(fr.seq, None)
+            if pending is not None:
+                rtt_ms = round((entry['monotonic'] - pending['monotonic']) * 1000.0, 3)
+                entry['acks_tx'] = pending['msg_type_name']
+                entry['acks_command_name'] = pending.get('command_name')
+                entry['acks_hex'] = pending.get('hex')
+                entry['rtt_ms'] = rtt_ms
+                self._last_panel_ack_rtt_ms = rtt_ms
+                self._recent_panel_ack_rtt_ms.append(rtt_ms)
+                if pending['msg_type'] == proto.TYPE_HOST_HEARTBEAT:
+                    self._last_heartbeat_ack_rtt_ms = rtt_ms
+                    self._recent_heartbeat_ack_rtt_ms.append(rtt_ms)
+                else:
+                    self._last_command_ack_rtt_ms = rtt_ms
+                    self._recent_command_ack_rtt_ms.append(rtt_ms)
+        elif fr.msg_type == proto.TYPE_EVENT_OR_DATA:
+            key = (fr.seq, fr.body.hex())
+            self._pending_panel_events[key] = entry['monotonic']
+        self._debug_append(entry)
+
     def _send_panel_ack(self, fr: proto.Frame, *, delay: float | None = None, note: str = 'panel_ack') -> None:
         if not self.send_acks:
             return
@@ -1291,14 +1471,35 @@ class TecomHub:
         ack_delay = self._panel_ack_delay_seconds if delay is None else max(0.0, float(delay))
         loop = asyncio.get_running_loop()
 
+        event_key = (fr.seq, fr.body.hex())
+
         def _record_ack_send() -> None:
-            self._debug_frames.append({
-                'ts': time.time(),
-                'dir': 'tx',
-                'peer': str(peer),
-                'hex': payload.hex(),
-                'note': note,
-            })
+            rx_monotonic = self._pending_panel_events.get(event_key)
+            actual_latency_ms = None
+            if rx_monotonic is not None:
+                actual_latency_ms = round((asyncio.get_running_loop().time() - rx_monotonic) * 1000.0, 3)
+                self._last_panel_event_ack_latency_ms = actual_latency_ms
+                self._recent_panel_event_ack_latency_ms.append(actual_latency_ms)
+            scheduled_delay_ms = round(ack_delay * 1000.0, 3)
+            self._last_panel_event_ack_scheduled_delay_ms = scheduled_delay_ms
+            self._track_tx_frame(
+                proto.build_ack(
+                    fr.seq,
+                    has_ff=getattr(fr, 'has_ff', False),
+                    type_offset=getattr(fr, 'type_offset', self._type_offset),
+                ),
+                payload,
+                peer,
+                note=note,
+                extra={
+                    'ack_for_seq': fr.seq,
+                    'ack_for_msg_type': f'0x{fr.msg_type:02X}',
+                    'ack_for_body_hex': fr.body.hex(),
+                    'ack_scheduled_delay_ms': scheduled_delay_ms,
+                    'ack_dispatch_latency_ms': actual_latency_ms,
+                    'ack_for_event': decode_ctplus_event(*proto.parse_event(fr.body), fr.body.hex()) if (fr.msg_type == proto.TYPE_EVENT_OR_DATA and proto.parse_event(fr.body)) else None,
+                },
+            )
 
         def _try_nowait_send() -> bool:
             try:
@@ -1613,11 +1814,17 @@ class TecomHub:
                 # extra targeted refreshes for the same repeated queue-head event.
                 repeat_count = self._note_panel_event_retransmit(fr)
                 if repeat_count > 1:
-                    self._last_repeated_event_key = (fr.seq, fr.body.hex())
+                    repeated_key = (fr.seq, fr.body.hex())
+                    previous_repeated_key = self._last_repeated_event_key
+                    self._last_repeated_event_key = repeated_key
                     self._last_repeated_event_raw = fr.to_bytes().hex()
                     self._last_repeated_event_code = code
                     self._last_repeated_event_object = obj
                     self._last_repeated_event_count = repeat_count
+                    self._last_repeated_event_decoded = payload
+                    if repeated_key != previous_repeated_key or self._last_repeated_event_first_seen_monotonic <= 0.0:
+                        self._last_repeated_event_first_seen_monotonic = loop_now
+                    self._last_repeated_event_last_seen_monotonic = loop_now
                 if repeat_count >= self._panel_retry_event_threshold:
                     self._enter_quiet_mode(
                         f"repeated panel event retries for code 0x{code:02X} object {obj}",
@@ -1764,15 +1971,44 @@ class TecomHub:
                     "transport_restart_after_quiet_reason": self._transport_restart_after_quiet_reason,
                     "burst_guard_until": self._burst_guard_until,
                 },
+                "diagnostics": {
+                    "debug_frame_capacity": self._debug_frame_limit,
+                    "debug_frame_count": len(self._debug_frames),
+                    "pending_host_frames": len(self._pending_host_frames),
+                    "pending_panel_events": len(self._pending_panel_events),
+                    "last_unsolicited_event_monotonic": self._last_unsolicited_event_monotonic,
+                    "last_send_monotonic": self._last_send_monotonic,
+                    "poll_backoff_until": self._poll_backoff_until,
+                    "last_retrieve_events_monotonic": self._last_retrieve_events_monotonic,
+                    "last_transport_restart_monotonic": self._last_transport_restart_monotonic,
+                    "last_panel_ack_rtt_ms": self._last_panel_ack_rtt_ms,
+                    "avg_panel_ack_rtt_ms": self._mean_ms(self._recent_panel_ack_rtt_ms),
+                    "last_command_ack_rtt_ms": self._last_command_ack_rtt_ms,
+                    "avg_command_ack_rtt_ms": self._mean_ms(self._recent_command_ack_rtt_ms),
+                    "last_heartbeat_ack_rtt_ms": self._last_heartbeat_ack_rtt_ms,
+                    "avg_heartbeat_ack_rtt_ms": self._mean_ms(self._recent_heartbeat_ack_rtt_ms),
+                    "last_panel_event_ack_latency_ms": self._last_panel_event_ack_latency_ms,
+                    "avg_panel_event_ack_latency_ms": self._mean_ms(self._recent_panel_event_ack_latency_ms),
+                    "last_panel_event_ack_scheduled_delay_ms": self._last_panel_event_ack_scheduled_delay_ms,
+                },
                 "state": {
                     "last_repeated_event_raw": self._last_repeated_event_raw,
                     "last_repeated_event_code": self._last_repeated_event_code,
                     "last_repeated_event_object": self._last_repeated_event_object,
                     "last_repeated_event_count": self._last_repeated_event_count,
+                    "last_repeated_event_first_seen_monotonic": self._last_repeated_event_first_seen_monotonic,
+                    "last_repeated_event_last_seen_monotonic": self._last_repeated_event_last_seen_monotonic,
+                    "last_repeated_event_text": (self._last_repeated_event_decoded or {}).get("text") if self._last_repeated_event_decoded else None,
+                    "last_repeated_event_message": (self._last_repeated_event_decoded or {}).get("message") if self._last_repeated_event_decoded else None,
+                    "last_repeated_event_eventtable_description": (self._last_repeated_event_decoded or {}).get("eventtable_description") if self._last_repeated_event_decoded else None,
+                    "last_repeated_event_restore_event_code": (self._last_repeated_event_decoded or {}).get("eventtable_restore_event_code") if self._last_repeated_event_decoded else None,
+                    "last_repeated_event_update_status": (self._last_repeated_event_decoded or {}).get("eventtable_update_status") if self._last_repeated_event_decoded else None,
+                    "last_repeated_event_decoded": self._last_repeated_event_decoded,
                     "last_event": self.state.last_event,
                     "last_event_code": self.state.last_event_code,
                     "last_event_object": self.state.last_event_object,
                     "last_event_raw": self.state.last_event_raw,
+                    "last_event_decoded": (decode_ctplus_event(self.state.last_event_code, self.state.last_event_object, self.state.last_event_raw) if self.state.last_event_code is not None and self.state.last_event_object is not None and self.state.last_event_raw else None),
                     "inputs": dict(self.state.inputs),
                     "relays": dict(self.state.relays),
                     "doors": dict(self.state.doors),
