@@ -9,7 +9,11 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
-## Version 3.1.8 highlights
+## Version 3.2.2 highlights
+
+- Built from the stable **3.2.0** base with **passive debug instrumentation** only, so CTPlus startup/bootstrap behaviour stays unchanged while diagnostics are expanded.
+- Debug dumps now include richer **packet-capture-style frame history**, decoded repeated-event text, ACK timing metrics, command names, and bootstrap counters to help isolate stuck comms-path failures.
+- Added **initial sync / bootstrap diagnostics** so it is easier to confirm whether inputs, areas, relays, and doors were actually populated after startup or reinitialisation.
 
 - CTPlus parser now understands the observed **byte-stuffed `5E FF` event frames** used by some queued panel events, so those events reach the normal decode + ACK path instead of getting stuck on the raw-only path.
 - This specifically targets queue-head events that previously appeared on `tecom_challengerplus_raw` but were never ACKed, causing the comms path event queue to stop draining.
