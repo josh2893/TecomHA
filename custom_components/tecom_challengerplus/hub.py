@@ -1763,13 +1763,13 @@ class TecomHub:
                     if now < until:
                         continue
 
-                    # Confirmed from captures on this panel: 0x0000 and 0x0006 are disarmed.
-                    # Treat any other observed word as armed for now so CTPlus/RAS-initiated
-                    # changes are visible in HA without needing a reload.
-                    if w in (0x0000, 0x0003, 0x0006):
-                        self.state.areas[area] = "disarmed"
-                    else:
+                    # Bit 7 (0x0080) is the armed indicator. Lower bits carry
+                    # modifier flags (e.g. isolated inputs) that don't affect
+                    # the armed/disarmed distinction.
+                    if w & 0x0080:
                         self.state.areas[area] = "armed"
+                    else:
+                        self.state.areas[area] = "disarmed"
 
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
@@ -2145,4 +2145,3 @@ class TecomHub:
         self._notify()
 
         await self._send_command(proto.cmd_area_disarm(area))
-
