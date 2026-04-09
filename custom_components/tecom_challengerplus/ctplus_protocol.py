@@ -56,8 +56,15 @@ class Frame:
         crc_data = bytes([msg_type, self.flag1, self.flag2, self.seq]) + self.body
         crc = crc16_modbus(crc_data)
         if self.has_ff:
-            return header + b"\xFF" + self.body + crc.to_bytes(2, "little")
-        return header + self.body + crc.to_bytes(2, "little")
+            tail = b"\xFF" + self.body + crc.to_bytes(2, "little")
+        else:
+            tail = self.body + crc.to_bytes(2, "little")
+        # Byte-stuff any 0x5E in the tail so the panel receiver does not
+        # mistake it for a new frame sync marker.  The panel's parser
+        # applies the inverse transform (0x5E 0xFF → 0x5E) on receive,
+        # matching the same stuffing rule already handled in parse_frame().
+        tail = tail.replace(b"\x5e", b"\x5e\xff")
+        return header + tail
 
 
 def parse_frame(data: bytes) -> Optional[Frame]:
@@ -322,5 +329,3 @@ def parse_ras_status_response(body: bytes) -> tuple[int, int] | None:
     if len(body) >= 4 and body[0] == 0x63 and body[1] == 0x02:
         return body[2], body[3]
     return None
-
-
