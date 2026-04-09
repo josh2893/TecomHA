@@ -1411,6 +1411,12 @@ class TecomHub:
             'hex': fr.to_bytes().hex(),
             **self._frame_summary(fr),
         }
+        entry.setdefault('ts', time.time())
+        try:
+            entry.setdefault('monotonic', asyncio.get_running_loop().time())
+        except RuntimeError:
+            entry.setdefault('monotonic', time.monotonic())
+
         if fr.msg_type == proto.TYPE_PANEL_ACK:
             pending = self._pending_host_frames.pop(fr.seq, None)
             if pending is not None:
