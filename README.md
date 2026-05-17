@@ -1,483 +1,443 @@
 <img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/89b5e061-2192-4047-ad73-23bc7123234a" />
-# Tecom ChallengerPlus Home Assistant Integration
+
+## Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
 
-This project talks to the panel using the **CTPlus / Management Software binary protocol** and has been built by reverse engineering CTPlus traffic, packet captures, logs, and event tables. It is a community project and is still evolving, but it is now far enough along to be genuinely useful for monitoring and a fair bit of control.
+This project talks to the panel using the **CTPlus / Management Software binary protocol** and exposes panel state and control inside Home Assistant. It is a **community reverse-engineered integration**, not an official Aritech / Tecom product.
 
-> **Important**
-> This is **not** an official Aritech / Tecom integration. Use it carefully, especially on live security systems. A dedicated panel path for Home Assistant is strongly recommended.
+The integration has been built and refined from:
+
+- CTPlus packet captures
+- panel event tables
+- protocol analysis of live ChallengerPlus traffic
+- comparison against CTPlus behaviour over long runtimes
+
+> [!IMPORTANT]
+> This integration is intended for users who understand their panel programming and network path configuration.
+> Use a **dedicated comms path** for Home Assistant wherever possible.
+
+---
+
+## Version 3.2.6 highlights
+
+Version **3.2.6** is the current stable release and includes the long-running CTPlus comms-path stability fix.
+
+### Major stability fix
+A long-standing issue could cause the panel event queue to wedge after hours or days of runtime. The root cause was an outgoing ACK/heartbeat framing edge case:
+
+- Challenger uses `0x5E` as the frame sync marker.
+- Some outgoing ACK frames could legitimately contain `0x5E` inside the payload/CRC portion.
+- The panel could misread that byte as a new frame sync and discard the ACK.
+- The event then stayed at the head of the queue and retried forever, eventually causing **path fail / too many event tries** behaviour.
+
+Version 3.2.6 fixes this by applying the required **outgoing byte-stuffing** rule after the header so literal `0x5E` bytes are transmitted safely.
+
+### Also included in the current stable branch
+
+- Startup **full state bootstrap** followed by quieter **event-driven runtime**
+- Configurable **runtime polling groups** for inputs, areas, relays, doors, and RAS objects
+- **Periodic session refresh** option for long-running CTPlus sessions
+- CTPlus event decoding using bundled event-table data
+- Import of friendly names from a CTPlus `export.panel`
+- Debug dump service for support and reverse engineering
+- Manual recovery / maintenance services such as full sync, session reinitialisation, and comms-path event-buffer reset
 
 ---
 
 ## Current status
 
-### Working well
-- **Panel connection in CTPlus / Management Software mode**
-- **Realtime event delivery** into Home Assistant via:
-  - `tecom_challengerplus_ctplus_event`
-  - `tecom_challengerplus_event`
-- **Inputs / zones** as binary sensors
-- **Areas** as alarm control panels
-  - arm away
-  - arm home
-  - disarm
-  - state updates from outside Home Assistant are reflected back into HA
-- **Relays** as switches
-- **DGP doors (17+)** as lock entities with an **Open / Unlock** action
-- **Event decoding** using CTPlus event-table data for many common event types
-- **Debug dump service** for reverse engineering and troubleshooting
+### Working well in CTPlus / Management Software mode
 
-### Working, but still under active refinement
-- **Door state modelling**
-  - The protocol clearly distinguishes multiple door concepts such as:
-    - contact open / closed
-    - secured / unsecured
-    - locked / unlocked
-    - auto unlocked / auto locked
-    - access granted / access granted - egress
-    - forced / forced restored
-    - open too long / restored
-  - Home Assistant currently exposes a practical subset of this, but the raw panel model is richer than the current HA entities.
-- **Door contact detection**
-  - This is much better than it was early on, but still best described as **best-effort**.
-  - Some installations may need additional tuning or further protocol work to separate physical contact state from secure/lock state perfectly.
-- **Event-burst handling**
-  - The panel uses command and event queues.
-  - Event acknowledgement is now substantially better than in earlier builds, but queue-heavy conditions are still being refined.
+- Realtime CTPlus event delivery
+- Inputs / zones as binary sensors
+- Areas as alarm control panels
+- Relays as switches
+- DGP doors as door-control lock entities with **Open** support
+- RAS / keypad door objects as door entities and optional contact-style sensors
+- Friendly naming from `export.panel`
+- Debug JSON dumps for troubleshooting
 
----
+### Still best described as practical / best-effort
 
-## What this integration is based on
-
-This project has been built from:
-- CTPlus packet captures
-- CTPlus logs
-- observed UDP event and status traffic
-- the CTPlus event table
-- comparison against a Control4 Tecom driver
-
-That work has already revealed a few important protocol facts:
-- the panel has separate **Alarm** and **Access** event queues
-- the panel expects event acknowledgements in a very specific format
-- some event classes need nothing more than an immediate ACK
-- the protocol supports **targeted status recalls** for specific objects
-- door behaviour is more complex than a single open/closed bit
+- Some of the underlying Challenger door model is richer than Home Assistant's entity model
+- Physical door open/closed state is best represented by the actual reed/input where available
+- Printer mode is intentionally much more limited than CTPlus mode
 
 ---
 
 ## Supported modes
 
 ### 1. CTPlus / Management Software mode
-This is the main mode and the one most people should use.
+This is the main mode and the recommended mode for most users.
 
 It provides:
-- inputs
+
+- live events
+- state bootstrap and refresh
 - areas
+- inputs
 - relays
 - doors
-- realtime CTPlus-style events
 - control functions
 
 ### 2. Printer / Computer Event Driven mode
-This is more limited and is mainly useful for basic event-driven monitoring.
+This is a more limited text-event mode.
 
-It does **not** expose the same level of control or structured status as CTPlus mode.
+It is useful for:
+
+- basic event monitoring
+- simpler integrations
+- environments where CTPlus mode is not available
+
+It does **not** provide the same structured state model or control capability as CTPlus mode.
 
 ---
 
 ## Installation
 
 ### HACS
+
 1. Open **HACS**
 2. Go to **Integrations**
-3. Add the repository as a **Custom repository**
+3. Add this repository as a **Custom repository**
 4. Category: **Integration**
 5. Install **Tecom ChallengerPlus**
 6. Restart Home Assistant
 
 ### Manual install
-1. Copy `custom_components/tecom_challengerplus` into:
-   `/config/custom_components/tecom_challengerplus`
-2. Restart Home Assistant
+
+Copy `custom_components/tecom_challengerplus` to:
+
+```text
+/config/custom_components/tecom_challengerplus
+```
+
+Then restart Home Assistant.
+
+No YAML configuration is required.
 
 ---
 
-## Panel programming and path setup
+## Recommended panel setup
 
-### Use a dedicated panel path for Home Assistant
-Home Assistant should have its **own Management Software / CTPlus style path**.
-Do **not** share the same comms path and port with the CTPlus desktop software.
+### Use a dedicated CTPlus / Management Software path
+Do **not** share the same management path between CTPlus desktop software and Home Assistant.
 
-A good example is:
+Recommended approach:
+
 - **CTPlus desktop** on one path/port
 - **Home Assistant** on a separate path/port
 
-That makes troubleshooting much easier and avoids one client stealing the other client’s traffic.
+This makes troubleshooting easier and avoids clients interfering with each other.
 
-### Recommended path settings
-Use a **computer / management software** style path configured for Home Assistant.
-The exact menu wording varies a bit depending on panel programming, but the important parts are:
-- UDP/IP
-- Client / computer style operation
-- send to the Home Assistant host IP
-- matching send/receive port
-- encryption set to **None**
+### Recommended path characteristics
+
+For CTPlus mode, use a path configured like a **Management Software / Computer** style connection, typically:
+
+- **UDP/IP** transport
+- Home Assistant host IP as the destination
+- matching panel and HA ports
+- **Encryption = None**
+
+> [!NOTE]
+> The config flow exposes encryption settings for completeness, but encrypted CTPlus transport is **not implemented** in this integration. Use **None**.
 
 ### Event filters matter
-On the panel path, the event filter controls what Home Assistant will receive.
-During reverse engineering, these categories were especially important:
+If the panel path is filtering out events, Home Assistant may still connect but important realtime updates will be missing.
+
+In practice, make sure the path includes the event categories you actually care about, especially:
+
 - alarm events
 - access events
-- system / communications events
-
-If these are filtered out, Home Assistant may still be able to poll statuses, but it will miss useful realtime events.
+- system / comms events
 
 ---
 
 ## Home Assistant configuration
 
-The integration supports a fairly flexible entity layout.
-Typical options include:
-- host
-- transport
-- bind host
-- send port / listen port
-- poll interval
-- counts and ranges for inputs, doors, relays, and areas
+The integration uses the UI config flow and options flow.
+
+### Important options
+
+#### Connection
+- **Mode**
+- **Host**
+- **Transport**
+- **Panel port**
+- **Local listen port**
+- **Local bind address**
+- **TCP role** if using TCP
+
+#### Object layout
+- **Input ranges** or input count
+- **Area count**
+- **Relay ranges** or relay count
+- **DGP door ranges**
+- **RAS door numbers**
+
+#### Runtime behaviour
+- **Runtime polling interval**
+- **Enable runtime polling** per object group
+- **Runtime door polling mode**
+- **Doors polled per runtime cycle**
+- **Send heartbeats**
+- **Heartbeat interval**
+- **Minimum delay between host frames**
+
+#### ACK / session tuning
+- **Panel ACK delay**
+- **Enable follow-up ACK for repeated retries**
+- **Follow-up ACK delay**
+- **Enable quiet-mode retry backoff**
+- **Enable periodic session refresh**
+- **Periodic session refresh interval (hours)**
 
 ### General guidance
-- Keep Home Assistant on the **same port** the panel path is configured to send to.
-- Use a specific `bind_host` if Home Assistant has multiple interfaces.
-- Keep polling conservative while troubleshooting.
-- Use a dedicated comms path for HA rather than sharing with CTPlus.
+
+- Leave runtime polling conservative unless you have a good reason to enable more of it.
+- The integration always performs a **startup state sync** after connecting.
+- Runtime polling options control **ongoing** refresh behaviour after startup.
+- For older or more sensitive panels, a small **Panel ACK delay** such as **20-25 ms** may behave better than instant ACKs.
 
 ---
 
+## Entities created
 
-### Importing names from a CTPlus `export.panel`
-The integration can optionally read a CTPlus `export.panel` file and use it to apply friendly names to entities that are **already loaded in Home Assistant**.
+### Inputs / zones
+Created as **binary sensors**.
 
-This import is intentionally **name-only** for now. It does **not** create extra entities and it does **not** currently remap door contact logic from the export.
+- Entity type: `binary_sensor`
+- Example: `binary_sensor.input_17`
+- Includes useful raw status attributes and event metadata
 
-How it works:
-- copy `export.panel` into Home Assistant, typically somewhere under `/config`
-- open the integration **Options**
-- set **Panel export path** to the file, for example `/config/export.panel`
-- enable whichever rename toggles you want (areas, inputs, doors, relays, RAS)
-- save the options so the integration reloads
+The default CTPlus input mapping is:
 
-Important behavior:
-- only objects that the integration has actually loaded will be renamed
-- unloaded panel objects are ignored
-- entity IDs and unique IDs are left alone; only the friendly/display names change
+- `0x96` = **Unsealed** = `on`
+- `0x97` = **Sealed** = `off`
+- status byte `0x20` = sealed / normal
 
-Example:
-- `Door 17` can become `Door 17 - Front Door `
-- `Input 19` can become `Input 19 - Front Door Egress`
-- `Area 2` can become `Area 2 - Shed`
+Alternative input mapping modes are available in the options flow for panels or legacy setups that need different behaviour.
 
-Imported names are prefixed this way on purpose so Home Assistant keeps doors, inputs and other objects grouped and sorted by their panel numbers instead of alphabetically by description alone.
+### Areas
+Created as **alarm control panels**.
 
-This makes dashboards and automations easier to understand without implying that Home Assistant is monitoring every object in the panel export.
+Supported actions:
 
-## Entities
-
-### Inputs (`binary_sensor`)
-Inputs are exposed as binary sensors.
-
-Current behaviour:
-- **On** = unsealed / active
-- **Off** = sealed / normal
-
-These are updated from a mix of event-driven traffic and targeted/status recalls.
-
-### Areas (`alarm_control_panel`)
-Areas are exposed as Home Assistant alarm entities.
-
-Current supported actions:
 - arm away
 - arm home
 - disarm
 
-External changes, such as arming or disarming from another keypad, CTPlus, or a mobile app, are reflected back into Home Assistant when the event path is behaving normally.
+State changes coming from outside Home Assistant are reflected back into HA.
 
-### Relays (`switch`)
-Relays are exposed as normal Home Assistant switches.
+### Relays
+Created as **switches**.
 
-### Doors (`lock` + contact sensor)
-Doors are currently represented in two main ways:
+Supported actions:
 
-- **Lock entity** for door control
-- **Door Contact** binary sensor for contact-style state
+- turn on
+- turn off
 
-#### DGP doors (17+)
-These currently support a momentary **unlock / open** style command.
+### DGP doors
+Created as **lock entities** with **Open** support.
 
-#### RAS doors (1-16)
-These are surfaced more conservatively because a RAS may be acting as a keypad / simple door controller rather than a normal DGP door.
+Important notes:
 
-### Door modelling note
-A Challenger door is not just “open” or “closed”. The event table and CTPlus behaviour show several overlapping concepts:
-- contact open / closed
-- secured / unsecured
-- locked / unlocked
-- auto unlocked / auto locked
-- access granted
-- access granted - egress
-- forced / forced restored
-- open too long / restored
+- These entities are primarily for **door control / release** semantics.
+- Lock state is derived from explicit CTPlus secure/lock style events where possible.
+- Physical contact state is **not** modelled as a separate DGP door contact entity by default.
+- If you have a real door reed wired as an input, that input is usually the best source of truth for open/closed automations.
 
-So while the current HA entities are already useful, the long-term goal is to expose this more cleanly.
+### RAS / keypad / simple controller doors
+Created as:
 
----
+- **lock entities** for the RAS object itself
+- **binary sensors** for configured RAS contact-style status
 
-## Events in Home Assistant
+These are exposed on a best-effort basis because RAS status is not the same as a full DGP door model.
 
-Listen in **Developer Tools → Events** for:
-- `tecom_challengerplus_ctplus_event`
-- `tecom_challengerplus_event`
+### Last event sensor
+A single sensor is created for the most recent decoded event.
 
-Example payload:
+- Entity type: `sensor`
+- Name: **Last event**
 
-```yaml
-event_type: tecom_challengerplus_ctplus_event
-data:
-  code: 165
-  code_hex: "0xA5"
-  object: 17
-  object_hex: "0x0011"
-  raw: "0f0c68c8389fa511000000000000"
-  text: "Door 17 Open"
-  message: "Door 17 Open"
-```
+It includes attributes such as:
 
-Recent builds also include extra event-table fields where available, such as:
-- `eventtable_description`
-- `eventtable_response_required`
-- `eventtable_required_2nd_response`
-- `eventtable_send_reset_to_panel`
-- `eventtable_restore_event_code`
-- `eventtable_update_status`
-- `eventtable_status_options`
-
-These are especially useful while reverse engineering the protocol.
+- last event code
+- last event object
+- raw event hex
+- input mapping mode
 
 ---
 
-## Known event mappings
+## Event bus events
 
-The CTPlus event table has been folded into the decoder for many common event types.
-Some especially useful ones are:
+The integration fires Home Assistant events that can be used in automations or diagnostics.
 
-### Door state and access
-- `0x86` = Door unlocked
-- `0x87` = Door locked
-- `0x88` = Door auto unlocked
-- `0x89` = Door auto locked
-- `0x92` = Door access granted
-- `0x9D` = Door access granted - egress
-- `0xA5` = Door open
-- `0xA6` = Door closed
-- `0xA7` = Door forced
-- `0xA8` = Door forced restored
-- `0xA9` = Door open too long
-- `0xAA` = Door open too long restored
-- `0xAE` = Door unsecured
-- `0xAF` = Door secured
+### `tecom_challengerplus_event`
+General event stream.
 
-### Communications and module status
-- `0x59` = Comms path fail
-- `0x5A` = Comms path restored
-- `0x5B` = Expander communications fault
-- `0x5C` = Expander communications restored
+- In printer mode, this carries raw text events.
+- In CTPlus mode, this carries decoded CTPlus event payloads.
 
-### Inputs
-The live captures showed the practical input mapping used by the integration is:
-- `0x96` = sealed
-- `0x97` = unsealed
+### `tecom_challengerplus_ctplus_event`
+Extra CTPlus-specific event stream for easier filtering in automations.
 
-This is intentionally based on observed live behaviour.
+Typical payload fields include:
+
+- `code`
+- `code_hex`
+- `object`
+- `object_hex`
+- `raw`
+- `text`
+- `message`
+- event-table metadata when available
+
+### `tecom_challengerplus_raw`
+Low-level raw protocol data for troubleshooting and reverse engineering.
+
+### `tecom_challengerplus_test`
+Generated by the built-in test service.
 
 ---
 
 ## Services
 
-The integration currently exposes these services:
+The integration registers several services.
+
+### `tecom_challengerplus.request_full_sync`
+Run a broad CTPlus-style state refresh for the selected panel.
+
+### `tecom_challengerplus.reinitialize_session`
+Re-send the CTPlus session hello, session parameters, and door-status init sequence.
+
+This is a **soft** session recovery / refresh, not a panel comms-path reset.
+
+### `tecom_challengerplus.reset_comms_path_event_buffer`
+Maintenance action that sends the CTPlus maintenance command used to clear/reset the current comms-path event buffer.
+
+This is **not** intended for normal runtime use.
+
+### `tecom_challengerplus.retrieve_events`
+Legacy alias for `reset_comms_path_event_buffer`.
+
+### `tecom_challengerplus.dump_debug`
+Write a debug JSON file for support and analysis.
 
 ### `tecom_challengerplus.send_raw_hex`
-Send a raw hex payload to the panel.
+Send an arbitrary raw hex payload to the panel.
 
-This is mainly for protocol testing and reverse engineering.
+This is intended for protocol testing and reverse engineering.
 
 ### `tecom_challengerplus.test_event`
 Fire an internal Home Assistant test event.
 
-### `tecom_challengerplus.dump_debug`
-Write a JSON debug dump for all loaded Tecom hubs.
-
-This is extremely useful when investigating:
-- stuck event queues
-- repeated events
-- path fail / restore loops
-- status refresh timing
-
-The debug dump includes things like:
-- current configuration snapshot
-- current state snapshot
-- recent transmitted frames
-- recent received frames
+> [!TIP]
+> If you have more than one Tecom entry loaded, pass `entry_id` to the service call so the correct panel is targeted.
 
 ---
 
-## Debugging and troubleshooting
+## Importing names from a CTPlus `export.panel`
 
-### Enable debug logging
-Add this to `configuration.yaml`:
+The integration can optionally read a CTPlus `export.panel` file and use it to apply friendly names to entities that are **already loaded in Home Assistant**.
 
-```yaml
-logger:
-  default: info
-  logs:
-    custom_components.tecom_challengerplus: debug
-```
+This import is intentionally **name-only**.
 
-Then restart Home Assistant.
+It does **not**:
 
-### Useful Wireshark filters
-Examples:
+- create extra entities
+- load objects that are outside your configured ranges
+- change entity IDs or unique IDs
+
+It only updates the friendly/display names of objects that the integration has already loaded.
+
+### How to use it
+
+1. Copy `export.panel` somewhere inside Home Assistant, for example:
 
 ```text
-udp.port == 3001
-udp.port == 3006
-ip.addr == <panel_ip> && udp
+/config/export.panel
 ```
 
-### Common symptoms and what they usually mean
+2. Open the integration **Options**
+3. Set **CTPlus export.panel path**
+4. Enable the rename toggles you want:
+   - areas
+   - inputs
+   - doors
+   - relays
+   - RAS
+5. Save the options so the integration reloads
 
-#### 1. `Unknown` states after startup
-Usually means one of:
-- wrong path type
-- wrong port
-- encryption enabled on the panel path
-- the panel is not sending replies to the configured HA path
+### Naming behaviour
+Imported names are intentionally prefixed with the object number, for example:
 
-#### 2. Same event repeating over and over
-This normally means the panel still considers that event to be at the head of the queue.
-Typical causes:
-- incorrect event acknowledgement
-- queue handling getting stuck during a burst
-- a specific event class still not being handled correctly
+- `Door 17 - Front Door`
+- `Input 19 - Front Door Egress`
+- `Area 2 - Warehouse`
 
-When this happens, CTPlus diagnostics often show:
-- event buffer growth
-- repeated retries
-- path fail / path restored messages
-
-#### 3. `Comms path fail` / `Comms path restored`
-These events are real panel events, not just bad decoding.
-In practice they have often been a **symptom** of a stuck event queue rather than the root cause.
-
-#### 4. Door state does not match the physical door perfectly
-This is one of the current refinement areas.
-The panel tracks more than one door concept, and some sites map “secured” or “unsecured” differently depending on their programming.
-
-#### 5. Queue drains after a reload, then later jams again
-That usually suggests:
-- the basic transport is working
-- the panel can deliver and HA can ACK a burst
-- but a specific later event class still needs better handling
+This keeps Home Assistant objects grouped and sortable by panel number.
 
 ---
 
-## Important practical notes learned during reverse engineering
+## Debugging
 
-### The panel is queue-driven
-This turned out to be one of the biggest discoveries.
-The panel keeps separate event queues, especially:
-- **Alarm queue**
-- **Access queue**
+The integration includes a debug dump service designed for support and reverse engineering.
 
-When the queue head is not retired properly:
-- the same event is resent
-- later events can be blocked behind it
-- the comms path may start to flap
+### What the debug dump includes
 
-### ACK format matters
-The panel is very sensitive to the exact ACK frame shape.
-A small ACK-format issue was enough to cause:
-- repeated identical events
-- event queues that would not drain
-- path flapping
+Depending on the current build, the dump can include:
 
-### CTPlus uses targeted recalls
-CTPlus does not appear to solve everything with broad polling.
-It uses targeted recalls for specific objects such as:
-- doors
-- inputs
-- areas
-- DGP / comms related states
+- current config snapshot
+- live state snapshot
+- recent RX/TX frame history
+- last event details
+- repeated-event tracking
+- ACK timing and related diagnostics
 
-That is the direction this integration is moving toward as well.
+This has been especially useful for comparing Home Assistant behaviour against CTPlus over long runtimes.
 
-### Polling still matters, but should not dominate
-Polling is still useful for:
-- startup sync
-- recovery after reconnect
-- filling in missed state changes
+### Suggested troubleshooting approach
 
-But heavy polling at the wrong time can compete with live event handling.
-So the integration tries to balance event-driven updates with targeted recalls and conservative background polling.
+When something goes wrong:
+
+1. Trigger `tecom_challengerplus.dump_debug`
+2. Save the JSON file before making panel changes
+3. If relevant, also capture CTPlus traffic on a separate management path
+4. Compare:
+   - repeated event frames
+   - ACK timing
+   - whether the panel path is still alive
+   - what the last successful events were
 
 ---
 
-## Current limitations
+## Known limitations
 
-- Door modelling is still evolving
-- Some rare event classes may still need additional response handling
-- Panel object names are not yet pulled from the panel
-- Encryption is not implemented for CTPlus mode
-- Some behaviour may vary by panel programming and site-specific door logic
-
----
-
-## Future work
-
-The main next steps are:
-- better separation of door **contact**, **secure**, and **lock** state
-- cleaner handling of forced and open-too-long scenarios
-- investigating panel record requests for:
-  - area names
-  - door names
-  - input names
-- continuing to reduce queue-stall edge cases
+- This is a **reverse-engineered** integration, not an official Tecom/Aritech product.
+- **Encryption is not implemented**. Use `None`.
+- CTPlus / Management Software mode is the primary target; Printer mode is intentionally limited.
+- Challenger door semantics are richer than the current HA entity model, so some door-related state is necessarily simplified.
+- The integration exposes a practical and useful subset of the protocol rather than every possible panel function.
 
 ---
 
-## Contributing
+## Recommended usage notes
 
-Useful things to capture when troubleshooting:
-- packet captures with clear filenames
-- CTPlus logs
-- screenshots of path diagnostics and event buffers
-- the exact action taken during the capture
-
-The best captures are usually the simplest ones:
-- one path
-- one client
-- one action sequence
-- no unrelated clicking around during the recording
+- Use a **dedicated comms path** for Home Assistant.
+- Prefer **UDP with encryption disabled** unless you specifically need TCP.
+- Keep runtime polling modest and let the event stream do most of the work.
+- Use actual input/reed sensors for physical door open/closed automations when available.
+- Treat `reset_comms_path_event_buffer` as a maintenance tool, not a normal runtime action.
 
 ---
 
 ## Disclaimer
 
-This project is community-built and reverse engineered.
-It is not affiliated with Aritech or Tecom.
-Use it carefully, test thoroughly, and treat it as an evolving integration rather than a finished commercial product.
+This software is provided as-is, without warranty.
 
+Test carefully before relying on it in a live security environment.
 
-## 2.0.70
-- Relay switch entities are now grouped under the Tecom device in Home Assistant.
-- Relay switch entities now expose basic debug attributes.
-- Door lock entities now expose richer debug attributes and prefer explicit lock/secure events over the raw door word when available.
+If you find a protocol quirk, packet capture and debug data are extremely valuable for improving the integration.
