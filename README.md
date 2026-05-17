@@ -217,7 +217,7 @@ Important behavior:
 Example:
 - `Door 17` can become `Door 17 - Front Door - 17B`
 - `Input 19` can become `Input 19 - Front Door Egress - 17B`
-- `Area 2` can become `Area 2 - Shed 17B Nimrod`
+- `Area 2` can become `Area 2 - Shed 17B `
 
 Imported names are prefixed this way on purpose so Home Assistant keeps doors, inputs and other objects grouped and sorted by their panel numbers instead of alphabetically by description alone.
 
