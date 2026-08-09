@@ -38,6 +38,20 @@ def crc16_modbus(data: bytes, init: int = 0xFFFF) -> int:
     return crc & 0xFFFF
 
 
+def stuff_bytes(data: bytes) -> bytes:
+    """Escape literal 0x5E bytes so they are not read as a frame sync marker.
+
+    Everything transmitted after the leading sync byte is subject to this rule,
+    including the type/flag/seq header fields.
+    """
+    return data.replace(b"\x5e", b"\x5e\xff")
+
+
+def unstuff_bytes(data: bytes) -> bytes:
+    """Inverse of stuff_bytes(): collapse 0x5E 0xFF back to a literal 0x5E."""
+    return data.replace(b"\x5e\xff", b"\x5e")
+
+
 @dataclass(frozen=True)
 class Frame:
     msg_type: int
@@ -52,38 +66,64 @@ class Frame:
 
     def to_bytes(self) -> bytes:
         msg_type = (self.msg_type + self.type_offset) & 0xFF
-        header = bytes([SYNC, msg_type, self.flag1, self.flag2, self.seq])
         crc_data = bytes([msg_type, self.flag1, self.flag2, self.seq]) + self.body
         crc = crc16_modbus(crc_data)
         if self.has_ff:
-            return header + b"\xFF" + self.body + crc.to_bytes(2, "little")
-        return header + self.body + crc.to_bytes(2, "little")
+            payload = bytes([msg_type, self.flag1, self.flag2, self.seq]) + b"\xFF" + self.body + crc.to_bytes(2, "little")
+        else:
+            payload = crc_data + crc.to_bytes(2, "little")
+        # Byte-stuff EVERY 0x5E after the sync byte so the panel receiver does not
+        # mistake it for a new frame sync marker.  This covers the header fields as
+        # well as the body/CRC: when the sequence counter reaches 0x5E the seq byte
+        # itself must be stuffed, otherwise the panel truncates the frame there and
+        # the ACK is silently dropped.  The panel applies the inverse transform
+        # (0x5E 0xFF -> 0x5E) on receive; parse_frame() mirrors that below.
+        return bytes([SYNC]) + stuff_bytes(payload)
 
 
 def parse_frame(data: bytes) -> Optional[Frame]:
     if not data or data[0] != SYNC or len(data) < 7:
         return None
 
-    raw_type = data[1]
-    type_offset = 0x40 if raw_type >= 0x80 else 0x00
-    msg_type = (raw_type - type_offset) & 0xFF
-    flag1 = data[2]
-    flag2 = data[3]
-    seq = data[4]
-    recv_crc = int.from_bytes(data[-2:], "little")
+    def _build(payload: bytes) -> Optional[Frame]:
+        """Try to interpret post-sync bytes as [type flag1 flag2 seq body crc]."""
+        if len(payload) < 6:
+            return None
+        raw_type = payload[0]
+        type_offset = 0x40 if raw_type >= 0x80 else 0x00
+        msg_type = (raw_type - type_offset) & 0xFF
+        flag1 = payload[1]
+        flag2 = payload[2]
+        seq = payload[3]
+        recv_crc = int.from_bytes(payload[-2:], "little")
 
-    # Normal form: CRC over [type..end-of-body]
-    body = data[5:-2]
-    if recv_crc == crc16_modbus(data[1:-2]):
-        return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body, has_ff=False, type_offset=type_offset)
+        # Normal form: CRC over [type..end-of-body]
+        body = payload[4:-2]
+        if recv_crc == crc16_modbus(payload[:-2]):
+            return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2,
+                         body=body, has_ff=False, type_offset=type_offset)
 
-    # FF-marker form: a 0xFF byte appears at index 5 but is excluded from CRC.
-    if len(body) >= 1 and data[5] == 0xFF:
-        body2 = data[6:-2]
-        if recv_crc == crc16_modbus(data[1:5] + body2):
-            return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2, body=body2, has_ff=True, type_offset=type_offset)
+        # Legacy FF-marker form: a 0xFF byte appears immediately after the header
+        # and is excluded from CRC. Kept for compatibility with older captures.
+        if len(body) >= 1 and payload[4] == 0xFF:
+            body2 = payload[5:-2]
+            if recv_crc == crc16_modbus(payload[:4] + body2):
+                return Frame(msg_type=msg_type, seq=seq, flag1=flag1, flag2=flag2,
+                             body=body2, has_ff=True, type_offset=type_offset)
+        return None
 
-    return None
+    # Byte-stuffing applies to everything after the sync byte, including the
+    # type/flag/seq header fields. When the panel's sequence counter reaches
+    # 0x5E the seq byte itself arrives stuffed as 0x5E 0xFF, so unstuffing must
+    # start at offset 1 -- not offset 5 -- or the escape byte is mistaken for
+    # the first body byte and the CRC check fails.
+    fr = _build(unstuff_bytes(data[1:]))
+    if fr is not None:
+        return fr
+
+    # Fall back to the literal (unstuffed) interpretation for any capture where
+    # 0x5E 0xFF legitimately appears as data rather than as an escape sequence.
+    return _build(data[1:])
 
 # -------------------------
 # Frame builders
@@ -297,5 +337,3 @@ def parse_ras_status_response(body: bytes) -> tuple[int, int] | None:
     if len(body) >= 4 and body[0] == 0x63 and body[1] == 0x02:
         return body[2], body[3]
     return None
-
-

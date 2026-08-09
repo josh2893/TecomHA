@@ -42,26 +42,56 @@ from .const import (
     CONF_AREAS_COUNT,
     CONF_ENCRYPTION_TYPE,
     CONF_INPUT_RANGES,
+    CONF_INPUT_MAPPING_MODE,
+    INPUT_MAPPING_CTPLUS,
+    INPUT_MAPPING_LEGACY_INVERTED,
+    INPUT_MAPPING_STATUS_ONLY,
     CONF_SEND_ACKS,
     CONF_SEND_HEARTBEATS,
     CONF_HEARTBEAT_INTERVAL,
     CONF_MIN_SEND_INTERVAL_MS,
+    CONF_PANEL_ACK_DELAY_MS,
+    CONF_PANEL_FOLLOWUP_ACK_ENABLED,
+    CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    CONF_QUIET_MODE_ENABLED,
+    CONF_PERIODIC_SESSION_REFRESH_ENABLED,
+    CONF_PERIODIC_SESSION_REFRESH_HOURS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
     CONF_DOOR_POLL_STARTUP_ONLY,
+    CONF_RUNTIME_POLLING,
+    CONF_RUNTIME_POLL_INPUTS,
+    CONF_RUNTIME_POLL_AREAS,
+    CONF_RUNTIME_POLL_RELAYS,
+    CONF_RUNTIME_POLL_DOORS,
+    CONF_RUNTIME_POLL_RAS,
     CONF_PANEL_EXPORT_PATH,
     CONF_PANEL_EXPORT_RENAME_AREAS,
     CONF_PANEL_EXPORT_RENAME_INPUTS,
     CONF_PANEL_EXPORT_RENAME_DOORS,
     CONF_PANEL_EXPORT_RENAME_RELAYS,
     CONF_PANEL_EXPORT_RENAME_RASES,
+    DEFAULT_INPUT_MAPPING_MODE,
     DEFAULT_SEND_ACKS,
+    DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
+    DEFAULT_PANEL_ACK_DELAY_MS,
+    DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
+    DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    DEFAULT_QUIET_MODE_ENABLED,
+    DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED,
+    DEFAULT_PERIODIC_SESSION_REFRESH_HOURS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
     DEFAULT_DOOR_POLL_STARTUP_ONLY,
+    DEFAULT_RUNTIME_POLLING,
+    DEFAULT_RUNTIME_POLL_INPUTS,
+    DEFAULT_RUNTIME_POLL_AREAS,
+    DEFAULT_RUNTIME_POLL_RELAYS,
+    DEFAULT_RUNTIME_POLL_DOORS,
+    DEFAULT_RUNTIME_POLL_RAS,
     DEFAULT_PANEL_EXPORT_PATH,
     DEFAULT_PANEL_EXPORT_RENAME_AREAS,
     DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
@@ -139,6 +169,9 @@ def expand_ranges(ranges: list[tuple[int, int]]) -> list[int]:
 @dataclass
 class TecomState:
     last_event: str | None = None
+    last_event_code: int | None = None
+    last_event_object: int | None = None
+    last_event_raw: str | None = None
     inputs: dict[int, bool] = None
     input_words: dict[int, int] = None
     relays: dict[int, bool] = None
@@ -177,12 +210,13 @@ class TecomHub:
         self.listen_port: int = int(cfg.get(CONF_LISTEN_PORT))
         self.bind_host: str = cfg.get(CONF_BIND_HOST, "0.0.0.0")
         self.tcp_role: str = cfg.get(CONF_TCP_ROLE, TCP_ROLE_CLIENT)
-        self.poll_interval: int = int(cfg.get(CONF_POLL_INTERVAL, 10))
+        self.poll_interval: int = int(cfg.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))
 
         # Diagnostics / tuning options (Options Flow).
         self.send_acks: bool = bool(cfg.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))
         self.send_heartbeats: bool = bool(cfg.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))
-        self.heartbeat_interval: int = int(cfg.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+        _configured_heartbeat = int(cfg.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+        self.heartbeat_interval: int = max(60, _configured_heartbeat) if self.mode == MODE_CTPLUS else _configured_heartbeat
         self.min_send_interval_ms: int = int(cfg.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))
         self.door_status_mode: str = str(cfg.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE) or DEFAULT_DOOR_STATUS_MODE)
         self.door_status_per_cycle: int = int(cfg.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))
@@ -190,6 +224,23 @@ class TecomHub:
         if isinstance(_door_poll_startup_only_cfg, str):
             _door_poll_startup_only_cfg = _door_poll_startup_only_cfg.strip().lower() in ("1", "true", "yes", "on")
         self.door_poll_startup_only: bool = bool(_door_poll_startup_only_cfg)
+        _runtime_polling_cfg = cfg.get(CONF_RUNTIME_POLLING, DEFAULT_RUNTIME_POLLING)
+        if isinstance(_runtime_polling_cfg, str):
+            _runtime_polling_cfg = _runtime_polling_cfg.strip().lower() in ("1", "true", "yes", "on")
+        self.runtime_polling: bool = bool(_runtime_polling_cfg)
+
+        def _bool_cfg(name: str, default: bool) -> bool:
+            value = cfg.get(name, default)
+            if isinstance(value, str):
+                value = value.strip().lower() in ("1", "true", "yes", "on")
+            return bool(value)
+
+        legacy_runtime = self.runtime_polling
+        self.runtime_poll_inputs: bool = _bool_cfg(CONF_RUNTIME_POLL_INPUTS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_INPUTS)
+        self.runtime_poll_areas: bool = _bool_cfg(CONF_RUNTIME_POLL_AREAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_AREAS)
+        self.runtime_poll_relays: bool = _bool_cfg(CONF_RUNTIME_POLL_RELAYS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RELAYS)
+        self.runtime_poll_doors: bool = _bool_cfg(CONF_RUNTIME_POLL_DOORS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_DOORS)
+        self.runtime_poll_ras: bool = _bool_cfg(CONF_RUNTIME_POLL_RAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RAS)
 
         # Optional CTPlus export.panel import for friendly naming only.
         self.panel_export_path: str = str(cfg.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH) or "").strip()
@@ -211,6 +262,7 @@ class TecomHub:
             self.input_poll_ranges = [(1, self.inputs_count)] if self.inputs_count > 0 else []
             self.input_ids = list(range(1, self.inputs_count + 1)) if self.inputs_count > 0 else []
             self.inputs_max = self.inputs_count
+        self.input_mapping_mode: str = str(cfg.get(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE) or DEFAULT_INPUT_MAPPING_MODE)
 
         self.relays_count = int(cfg.get(CONF_RELAYS_COUNT, 0))
         # Relay numbering can be non-contiguous; relay_ranges overrides relays_count when set.
@@ -281,7 +333,19 @@ class TecomHub:
         self.door_ids = self.dgp_door_ids + self.ras_door_ids
 
         # Debug ring buffer (last N frames).
-        self._debug_frames = deque(maxlen=500)
+        self._debug_frame_limit: int = 800
+        self._debug_frames = deque(maxlen=self._debug_frame_limit)
+        self._pending_host_frames: dict[int, dict] = {}
+        self._pending_panel_events: dict[tuple[int, str], float] = {}
+        self._recent_panel_ack_rtt_ms: deque[float] = deque(maxlen=128)
+        self._recent_command_ack_rtt_ms: deque[float] = deque(maxlen=128)
+        self._recent_heartbeat_ack_rtt_ms: deque[float] = deque(maxlen=128)
+        self._recent_panel_event_ack_latency_ms: deque[float] = deque(maxlen=128)
+        self._last_panel_ack_rtt_ms: float | None = None
+        self._last_command_ack_rtt_ms: float | None = None
+        self._last_heartbeat_ack_rtt_ms: float | None = None
+        self._last_panel_event_ack_latency_ms: float | None = None
+        self._last_panel_event_ack_scheduled_delay_ms: float | None = None
         # Retransmitted panel events can repeat if the ACK is not seen quickly enough.
         # Keep a short cache so duplicates do not flood the HA event bus.
         self._recent_event_keys: dict[tuple[int, str], float] = {}
@@ -307,6 +371,66 @@ class TecomHub:
         self._last_unsolicited_event_monotonic: float = 0.0
         self._startup_backlog_quiet_seconds: float = 2.5
         self._startup_backlog_max_seconds: float = 20.0
+        self.quiet_mode_enabled: bool = _bool_cfg(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
+        self.periodic_session_refresh_enabled: bool = _bool_cfg(CONF_PERIODIC_SESSION_REFRESH_ENABLED, DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED) if self.mode == MODE_CTPLUS else False
+        _refresh_hours_cfg = cfg.get(CONF_PERIODIC_SESSION_REFRESH_HOURS, DEFAULT_PERIODIC_SESSION_REFRESH_HOURS)
+        try:
+            _refresh_hours = float(_refresh_hours_cfg)
+        except (TypeError, ValueError):
+            _refresh_hours = float(DEFAULT_PERIODIC_SESSION_REFRESH_HOURS)
+        self.periodic_session_refresh_hours: float = max(1.0, _refresh_hours)
+        self._periodic_session_refresh_interval: float = self.periodic_session_refresh_hours * 3600.0 if self.periodic_session_refresh_enabled else 0.0
+        self._next_periodic_session_refresh_monotonic: float = 0.0
+        self._last_periodic_session_refresh_monotonic: float = 0.0
+        self._last_periodic_session_refresh_reason: str | None = None
+        # Quiet-mode recovery: when the panel starts retrying the same queue-head event
+        # or returns short error-style replies, stop host-initiated recalls for a while and
+        # let only heartbeats + immediate panel ACKs flow. This matches CTPlus/ARES style
+        # behaviour much more closely than continuing to poll through the retry storm.
+        self._quiet_mode_until: float = 0.0
+        self._quiet_reason: str | None = None
+        self._quiet_reinit_pending: bool = False
+        self._last_panel_event_seq: int | None = None
+        # Rx watchdog: track the last time any frame was received from the panel.
+        # If no frames arrive for several heartbeat intervals, the session is
+        # presumed dead (network drop, panel reboot, etc.) and the transport is
+        # automatically restarted.
+        self._last_rx_monotonic: float = 0.0
+        self._rx_watchdog_multiplier: float = 4.0  # dead after N missed heartbeat intervals
+        self._rx_watchdog_min_seconds: float = 120.0  # floor even with short heartbeat interval
+        self._panel_retry_event_threshold: int = 3
+        self._quiet_mode_seconds: float = max(120.0, float(self.poll_interval) * 0.25)
+        # CTPlus idle captures show a one-shot startup/state bootstrap followed by very
+        # quiet event-driven runtime behaviour. Mirror that here: do one broad sync after
+        # backlog drain / reconnect, then stop routine full polling and rely on live events.
+        # Manual full sync and reconnect recovery still reuse the same initial sync helper.
+        self._idle_full_sync_enabled: bool = ((self.runtime_poll_inputs or self.runtime_poll_areas or self.runtime_poll_relays or self.runtime_poll_doors or self.runtime_poll_ras) if self.mode == MODE_CTPLUS else True)
+        self._idle_full_sync_interval: float = max(float(self.poll_interval), 1.0) if self._idle_full_sync_enabled else 0.0
+        self._next_idle_full_sync_monotonic: float = 0.0
+        self._transport_restart_pending: bool = False
+        self._transport_restart_reason: str | None = None
+        self._last_transport_restart_monotonic: float = 0.0
+        self._transport_restart_cooldown: float = 180.0
+        self._transport_restart_after_quiet: bool = False
+        self._transport_restart_after_quiet_reason: str | None = None
+        self._burst_event_times: deque[float] = deque(maxlen=64)
+        self._burst_guard_until: float = 0.0
+        self._last_repeated_event_key: tuple[int, str] | None = None
+        self._last_repeated_event_raw: str | None = None
+        self._last_repeated_event_code: int | None = None
+        self._last_repeated_event_object: int | None = None
+        self._last_repeated_event_count: int = 0
+        self._last_repeated_event_decoded: dict | None = None
+        self._last_repeated_event_first_seen_monotonic: float = 0.0
+        self._last_repeated_event_last_seen_monotonic: float = 0.0
+        self._followup_ack_until: dict[tuple[int, str], float] = {}
+        # ACK pacing is configurable so older Challenger panels can be tuned to behave
+        # more like CTPlus on the wire without rebuilding the integration.
+        _ack_delay_ms = int(cfg.get(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS))
+        self._panel_ack_delay_seconds: float = (max(0, _ack_delay_ms) / 1000.0) if self.mode == MODE_CTPLUS else 0.0
+        self._panel_followup_ack_enabled: bool = _bool_cfg(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED)
+        _followup_ack_delay_ms = int(cfg.get(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS))
+        self._panel_followup_ack_delay_seconds: float = max(0, _followup_ack_delay_ms) / 1000.0
 
 
     def contact_name(self, number: int, default: str, *, kind: str = "door") -> str:
@@ -378,42 +502,51 @@ class TecomHub:
                 return f"{prefix} - {name}"
         return default
 
-    def decode_input_status(self, raw: int | None) -> tuple[bool | None, str]:
-        """Decode a polled input status byte into an on/off state.
-
-        Challenger inputs appear to use more than one status pattern. The legacy
-        integration treated bit 0x20 as the sealed/restored bit. Recent live
-        captures showed another common pattern where the distinguishing change
-        between open/unsealed and sealed is bit 0x40 instead:
-            0x23 = Unsealed, Open state
-            0x63 = Sealed
-        In both of those, 0x20 stays set.
-
-        To avoid breaking currently-working inputs, keep the existing 0x20 logic
-        as the default and only switch to the 0x40-based interpretation for the
-        common low-bit pattern (0x03) seen on the open-loop/open-state style
-        points.
-        """
-
-        if raw is None:
-            return None, "event_only"
-
-        raw = int(raw) & 0xFF
-        legacy_state = not bool(raw & 0x20)
-
-        # Hybrid open-state handling. This keeps existing inputs behaving as
-        # before, while allowing reed/open-loop points like the front gate reed
-        # to report ON when 0x40 clears even though 0x20 remains set.
-        if (raw & 0x03) == 0x03:
-            return (not bool(raw & 0x40)), "raw_status_hybrid_bit_0x40"
-
-        return legacy_state, "raw_status_bit_0x20"
-
     def _next_seq(self) -> int:
         self._seq_out = (self._seq_out + 1) & 0xFF
         if self._seq_out == 0:
             self._seq_out = 1
         return self._seq_out
+
+    def _input_state_from_status(self, raw: int) -> bool:
+        """Return HA boolean state from an input status byte.
+
+        CTPlus event/status material consistently points to bit 0x20 meaning the input is
+        sealed/normal. In HA we surface inputs as ON when active/tripped, so sealed maps to
+        OFF and unsealed maps to ON.
+        """
+        return not bool(int(raw) & 0x20)
+
+    def _input_event_state(self, code: int) -> bool | None:
+        """Return HA boolean state for input event codes 0x96/0x97.
+
+        Modes:
+          - ctplus: 0x96=Unsealed/ON, 0x97=Sealed/OFF
+          - legacy_inverted: preserve older 2.x behaviour
+          - status_only: do not trust event polarity; wait for targeted status refresh
+        """
+        if self.input_mapping_mode == INPUT_MAPPING_STATUS_ONLY:
+            return None
+        if self.input_mapping_mode == INPUT_MAPPING_LEGACY_INVERTED:
+            if code == 0x96:
+                return False
+            if code == 0x97:
+                return True
+            return None
+        if code == 0x96:
+            return True
+        if code == 0x97:
+            return False
+        return None
+
+    def input_state_source(self, number: int) -> str:
+        raw = self.state.input_words.get(number)
+        if raw is not None:
+            return "raw_status_bit_0x20"
+        if self.input_mapping_mode == INPUT_MAPPING_STATUS_ONLY:
+            return "event_refresh_pending"
+        return f"event_mapping:{self.input_mapping_mode}"
+
 
     def add_listener(self, cb: UpdateCallback) -> Callable[[], None]:
         self._listeners.add(cb)
@@ -431,6 +564,125 @@ class TecomHub:
             except Exception:  # pragma: no cover
                 _LOGGER.exception("Listener error")
 
+    def _in_quiet_mode(self) -> bool:
+        if not self.quiet_mode_enabled:
+            return False
+        return asyncio.get_running_loop().time() < self._quiet_mode_until
+
+    def _in_burst_guard(self) -> bool:
+        return asyncio.get_running_loop().time() < self._burst_guard_until
+
+    def _note_unsolicited_event_burst(self) -> None:
+        now = asyncio.get_running_loop().time()
+        self._burst_event_times.append(now)
+        while self._burst_event_times and (now - self._burst_event_times[0]) > 1.5:
+            self._burst_event_times.popleft()
+        if len(self._burst_event_times) >= 12:
+            until = now + 3.0
+            if until > self._burst_guard_until:
+                self._burst_guard_until = until
+                self._poll_backoff_until = max(self._poll_backoff_until, until)
+                self._debug_frames.append({
+                    "ts": time.time(),
+                    "dir": "note",
+                    "peer": str(self._udp_last_peer),
+                    "hex": "",
+                    "note": f"burst_guard:{len(self._burst_event_times)}",
+                })
+
+    def _schedule_next_periodic_session_refresh(self, now: float | None = None, *, delay: float | None = None) -> None:
+        if not self.periodic_session_refresh_enabled or self.mode != MODE_CTPLUS:
+            self._next_periodic_session_refresh_monotonic = 0.0
+            return
+        loop_now = asyncio.get_running_loop().time() if now is None else now
+        interval = max(300.0, float(delay if delay is not None else self._periodic_session_refresh_interval))
+        self._next_periodic_session_refresh_monotonic = loop_now + interval
+
+    async def _async_run_periodic_session_refresh(self, reason: str = "scheduled") -> None:
+        if not self.periodic_session_refresh_enabled or self.mode != MODE_CTPLUS:
+            return
+        now = asyncio.get_running_loop().time()
+        self._debug_frames.append({
+            "ts": time.time(),
+            "dir": "note",
+            "peer": str(self._udp_last_peer),
+            "hex": "",
+            "note": f"periodic_session_refresh:{reason}",
+        })
+        try:
+            await self.async_reinitialize_session(log_errors=False)
+        except Exception:
+            _LOGGER.debug("Periodic CTPlus session refresh failed", exc_info=True)
+            retry_delay = min(900.0, max(300.0, self._periodic_session_refresh_interval * 0.25 if self._periodic_session_refresh_interval else 300.0))
+            self._schedule_next_periodic_session_refresh(now, delay=retry_delay)
+            return
+        self._last_periodic_session_refresh_monotonic = now
+        self._last_periodic_session_refresh_reason = reason
+        self._schedule_next_periodic_session_refresh(now)
+
+    def _cancel_pending_refresh_tasks(self) -> None:
+        for task in list(self._input_refresh_tasks.values()):
+            task.cancel()
+        self._input_refresh_tasks.clear()
+        for task in list(self._door_refresh_tasks.values()):
+            task.cancel()
+        self._door_refresh_tasks.clear()
+        if self._retrieve_events_task and not self._retrieve_events_task.done():
+            self._retrieve_events_task.cancel()
+        self._retrieve_events_task = None
+
+    def _enter_quiet_mode(self, reason: str, *, duration: float | None = None, reinitialize: bool = False) -> None:
+        if not self.quiet_mode_enabled:
+            self._quiet_mode_until = 0.0
+            self._quiet_reason = None
+            self._quiet_reinit_pending = False
+            self._debug_frames.append({
+                'ts': time.time(),
+                'dir': 'note',
+                'peer': str(self._udp_last_peer),
+                'hex': '',
+                'note': f'quiet_mode_skipped_disabled:{reason}',
+            })
+            return
+        loop = asyncio.get_running_loop()
+        now = loop.time()
+        quiet_for = max(15.0, float(duration if duration is not None else self._quiet_mode_seconds))
+        until = now + quiet_for
+        self._quiet_mode_until = max(self._quiet_mode_until, until)
+        self._quiet_reason = reason
+        self._quiet_reinit_pending = self._quiet_reinit_pending or reinitialize
+        self._poll_backoff_until = max(self._poll_backoff_until, self._quiet_mode_until)
+        self._cancel_pending_refresh_tasks()
+        self.state.last_event = f"Quiet mode: {reason}"
+        self._debug_frames.append({
+            'ts': time.time(),
+            'dir': 'note',
+            'peer': str(self._udp_last_peer),
+            'hex': '',
+            'note': f'quiet_mode:{reason}',
+        })
+        self._notify()
+
+    def _schedule_transport_restart(self, reason: str) -> None:
+        """Deferred HA-side transport restarts are disabled.
+
+        The panel-side comms path is sensitive during retry storms, and restarting only
+        the Home Assistant transport has not proven useful in the field. Keep the helper
+        as a no-op so diagnostics can note the suppressed action without changing the
+        live session.
+        """
+        self._transport_restart_pending = False
+        self._transport_restart_reason = None
+        self._transport_restart_after_quiet = False
+        self._transport_restart_after_quiet_reason = None
+        self._debug_frames.append({
+            'ts': time.time(),
+            'dir': 'note',
+            'peer': str(self._udp_last_peer),
+            'hex': '',
+            'note': f'transport_restart_disabled:{reason}',
+        })
+
     async def async_start(self) -> None:
         """Start transport and register services."""
         if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
@@ -439,30 +691,17 @@ class TecomHub:
             )
 
         await self._start_transport()
-        self._register_services()
 
         if self.mode == MODE_CTPLUS:
-            # CTPlus session init (observed in CTPlus login capture). Without this, some ports
-            # can appear to "do nothing" until a CTPlus client connects once.
-            try:
-                await self._send_command(proto.cmd_session_hello())
-                await self._send_command(proto.cmd_session_params())
-            except Exception:
-                _LOGGER.debug("CTPlus session init failed (continuing)", exc_info=True)
-
-            # Door status init can be required before per-door status requests.
-            if getattr(self, 'dgp_door_ids', None) and not self._door_status_inited:
-                try:
-                    await self._send_command(proto.cmd_door_status_init())
-                    self._door_status_inited = True
-                except Exception:
-                    _LOGGER.debug("Door status init failed (continuing)", exc_info=True)
+            await self.async_reinitialize_session(log_errors=False)
 
             # Start heartbeats immediately so the panel keeps the path alive, but hold
             # broad polling until queued events have had a chance to drain first.
             self._startup_backlog_started_monotonic = asyncio.get_running_loop().time()
             self._last_unsolicited_event_monotonic = self._startup_backlog_started_monotonic
+            self._last_rx_monotonic = self._startup_backlog_started_monotonic
             self._startup_backlog_drain = True
+            self._schedule_next_periodic_session_refresh(self._startup_backlog_started_monotonic)
 
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -488,6 +727,7 @@ class TecomHub:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         self._door_refresh_tasks.clear()
+        self._next_periodic_session_refresh_monotonic = 0.0
 
         if self._transport_obj:
             await self._transport_obj.async_stop()
@@ -549,6 +789,33 @@ class TecomHub:
         await self._transport_obj.async_start()
         _LOGGER.info("Started Tecom CTPlus transport (%s/%s)", self.transport, self.tcp_role)
 
+    async def _async_restart_transport_session(self, reason: str) -> None:
+        """Rebuild the transport/session when the panel queue stays wedged."""
+        self._transport_restart_pending = False
+        self._transport_restart_reason = None
+        self._last_transport_restart_monotonic = asyncio.get_running_loop().time()
+        self._cancel_pending_refresh_tasks()
+        self._clear_door_lock_runtime_state()
+        self._notify()
+        self._debug_frames.append({
+            'ts': time.time(),
+            'dir': 'note',
+            'peer': str(self._udp_last_peer),
+            'hex': '',
+            'note': f'transport_restart:{reason}',
+        })
+        try:
+            if self._transport_obj is not None:
+                await self._transport_obj.async_stop()
+        except Exception:
+            _LOGGER.debug("Transport stop during restart failed", exc_info=True)
+        self._transport_obj = None
+        await asyncio.sleep(max(1.0, self._min_send_interval * 8.0))
+        await self._start_transport()
+        await asyncio.sleep(max(0.5, self._min_send_interval * 4.0))
+        self._last_rx_monotonic = asyncio.get_running_loop().time()
+        await self.async_reinitialize_session(log_errors=False)
+
     def _register_services(self) -> None:
         async def async_send_raw(call):
             hex_str = (call.data.get("hex") or "").replace(" ", "")
@@ -573,7 +840,7 @@ class TecomHub:
 
     async def _send_frame(self, frame: proto.Frame) -> None:
         payload = frame.to_bytes()
-        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex()})
+        self._track_tx_frame(frame, payload, self._udp_last_peer)
         await self.async_send_bytes(payload)
 
     async def _send_frame_paced(self, frame: proto.Frame) -> None:
@@ -592,7 +859,17 @@ class TecomHub:
             await self._send_frame(frame)
             self._last_send_monotonic = asyncio.get_running_loop().time()
 
-    async def _send_command(self, body: bytes, type_offset: int | None = None) -> None:
+    async def _send_command(self, body: bytes, type_offset: int | None = None, *, bypass_quiet: bool = False) -> None:
+        if (self._in_quiet_mode() or self._in_burst_guard()) and not bypass_quiet:
+            note = "command_suppressed_quiet_mode" if self._in_quiet_mode() else "command_suppressed_burst_guard"
+            self._debug_frames.append({
+                'ts': time.time(),
+                'dir': 'note',
+                'peer': str(self._udp_last_peer),
+                'hex': body.hex(),
+                'note': note,
+            })
+            return
         seq = self._next_seq()
         # If panel type offset isn't known yet, send both variants (0x00 and 0x40).
         if type_offset is None and not self._type_offset_known:
@@ -603,7 +880,7 @@ class TecomHub:
             type_offset = self._type_offset
         await self._send_frame_paced(proto.Frame(proto.TYPE_COMMAND, seq, body=body, type_offset=type_offset))
     async def _heartbeat_loop(self) -> None:
-        """Send CTPlus keepalive frequently so panel does not declare path down."""
+        """Send CTPlus keepalive at a CTPlus-like cadence while idle."""
         while True:
             try:
                 if not self.send_heartbeats:
@@ -616,7 +893,33 @@ class TecomHub:
                 else:
                     await self._send_frame_paced(proto.build_heartbeat(self._next_seq(), type_offset=self._type_offset))
 
-                await asyncio.sleep(max(1, int(self.heartbeat_interval or DEFAULT_HEARTBEAT_INTERVAL_SECONDS)))
+                # Rx watchdog: if no frame has been received from the panel for
+                # an extended period, the session is presumed dead.  Restart the
+                # transport and reinitialise so we recover automatically from
+                # network drops, panel reboots, or wedged comms paths.
+                hb_interval = max(1, int(self.heartbeat_interval or DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+                watchdog_timeout = max(self._rx_watchdog_min_seconds, hb_interval * self._rx_watchdog_multiplier)
+                now_mono = asyncio.get_running_loop().time()
+                if (
+                    self._last_rx_monotonic > 0.0
+                    and (now_mono - self._last_rx_monotonic) > watchdog_timeout
+                    and (now_mono - self._last_transport_restart_monotonic) > self._transport_restart_cooldown
+                ):
+                    silence = now_mono - self._last_rx_monotonic
+                    _LOGGER.warning(
+                        "No panel frames received for %.0fs (watchdog timeout %.0fs), restarting transport",
+                        silence,
+                        watchdog_timeout,
+                    )
+                    self._debug_append({
+                        'dir': 'note',
+                        'peer': str(self._udp_last_peer),
+                        'hex': '',
+                        'note': f'rx_watchdog_restart:no_rx_for_{silence:.0f}s',
+                    })
+                    await self._async_restart_transport_session(f"rx_watchdog:no_rx_{silence:.0f}s")
+
+                await asyncio.sleep(hb_interval)
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -624,9 +927,40 @@ class TecomHub:
     async def _poll_loop(self) -> None:
         while True:
             try:
-                # When the panel is actively streaming queued events, back off host-initiated
-                # polling briefly so we do not occupy the command queue and starve event delivery.
                 now = asyncio.get_running_loop().time()
+
+                if now < self._quiet_mode_until:
+                    await asyncio.sleep(min(1.0, self._quiet_mode_until - now))
+                    continue
+
+                if self._in_burst_guard():
+                    await asyncio.sleep(min(1.0, self._burst_guard_until - now))
+                    continue
+
+                if self._quiet_reinit_pending:
+                    try:
+                        await self.async_reinitialize_session(log_errors=False)
+                    except Exception:
+                        _LOGGER.debug("Quiet-mode reinitialisation failed (will retry)", exc_info=True)
+                    else:
+                        self._quiet_reinit_pending = False
+                        self._startup_backlog_started_monotonic = asyncio.get_running_loop().time()
+                        self._last_unsolicited_event_monotonic = self._startup_backlog_started_monotonic
+                        self._startup_backlog_drain = True
+                    await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
+                    continue
+
+                if (
+                    self.periodic_session_refresh_enabled
+                    and self.mode == MODE_CTPLUS
+                    and self._next_periodic_session_refresh_monotonic > 0.0
+                    and now >= self._next_periodic_session_refresh_monotonic
+                    and not self._startup_backlog_drain
+                    and now >= self._poll_backoff_until
+                ):
+                    await self._async_run_periodic_session_refresh("scheduled")
+                    await asyncio.sleep(max(2.0, self._startup_backlog_quiet_seconds))
+                    continue
 
                 if self._startup_backlog_drain:
                     quiet_for = now - self._last_unsolicited_event_monotonic
@@ -635,37 +969,43 @@ class TecomHub:
                         await asyncio.sleep(min(0.5, self._startup_backlog_quiet_seconds - quiet_for))
                         continue
                     try:
-                        await self._async_initial_sync()
+                        # Always perform one full startup snapshot after the initial backlog drain.
+                        # Runtime polling options only control ongoing polling after startup.
+                        await self._async_initial_sync(runtime_only=False)
                     except Exception:
                         _LOGGER.debug("Initial sync after backlog drain failed (will retry)", exc_info=True)
                     else:
                         self._startup_backlog_drain = False
-                    await asyncio.sleep(self.poll_interval)
+                        if self._idle_full_sync_enabled:
+                            self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+                        else:
+                            self._next_idle_full_sync_monotonic = 0.0
+                    await asyncio.sleep(5.0)
                     continue
 
                 if now < self._poll_backoff_until:
                     await asyncio.sleep(min(0.5, self._poll_backoff_until - now))
                     continue
 
-                # Poll first, then sleep (so state updates quickly after reload/startup).
-                if getattr(self, 'input_poll_ranges', None):
-                    for rs, re_ in self.input_poll_ranges:
-                        await self.async_request_inputs(rs, re_)
+                if not self._idle_full_sync_enabled:
+                    await asyncio.sleep(5.0)
+                    continue
 
-                if getattr(self, 'relay_poll_ranges', None):
-                    for rs, re_ in self.relay_poll_ranges:
-                        await self.async_request_relays(rs, re_)
+                if now < self._next_idle_full_sync_monotonic:
+                    await asyncio.sleep(min(5.0, self._next_idle_full_sync_monotonic - now))
+                    continue
 
-                if getattr(self, 'areas_count', 0) and self.areas_count > 0:
-                    await self.async_request_areas(1, self.areas_count)
-                if getattr(self, 'ras_door_ids', None):
-                    for ras in self.ras_door_ids:
-                        await self._send_command(proto.cmd_request_ras_status(ras))
+                try:
+                    await self._async_initial_sync(runtime_only=True)
+                except Exception:
+                    _LOGGER.debug("Idle safety sync failed (will retry)", exc_info=True)
+                finally:
+                    if self._idle_full_sync_enabled:
+                        self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+                    else:
+                        self._next_idle_full_sync_monotonic = 0.0
 
-                if not getattr(self, "door_poll_startup_only", False):
-                    await self.async_request_doors()
-
-                await asyncio.sleep(self.poll_interval)
+                await asyncio.sleep(min(5.0, self._idle_full_sync_interval if self._idle_full_sync_enabled else 5.0))
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -699,7 +1039,7 @@ class TecomHub:
             await self._send_command(proto.cmd_request_area_status(cur, count))
             cur += count
 
-    async def _async_initial_sync(self) -> None:
+    async def _async_initial_sync(self, runtime_only: bool = False) -> None:
         """Perform one broad status sync after backlog drain / on demand.
 
         When "door poll startup only" is enabled, the one-shot startup door sweep needs to be
@@ -708,24 +1048,37 @@ class TecomHub:
         So for startup-only mode we do a few paced passes over the still-unknown DGP doors until
         they populate or we hit a small retry limit.
         """
-        if self.inputs_count > 0:
-            await self.async_request_inputs(1, self.inputs_count)
+        poll_inputs = (not runtime_only) or self.runtime_poll_inputs
+        poll_relays = (not runtime_only) or self.runtime_poll_relays
+        poll_areas = (not runtime_only) or self.runtime_poll_areas
+        poll_ras = (not runtime_only) or self.runtime_poll_ras
+        poll_doors = (not runtime_only) or self.runtime_poll_doors
 
-        if getattr(self, "relay_poll_ranges", None):
+        if poll_inputs and getattr(self, "input_poll_ranges", None):
+            for rs, re_ in self.input_poll_ranges:
+                await self.async_request_inputs(rs, re_)
+
+        if poll_relays and getattr(self, "relay_poll_ranges", None):
             for rs, re_ in self.relay_poll_ranges:
                 await self.async_request_relays(rs, re_)
 
-        if getattr(self, "areas_count", 0) and self.areas_count > 0:
+        if poll_areas and getattr(self, "areas_count", 0) and self.areas_count > 0:
             await self.async_request_areas(1, self.areas_count)
 
-        if getattr(self, 'ras_door_ids', None):
+        if poll_ras and getattr(self, 'ras_door_ids', None):
             for ras in self.ras_door_ids:
                 await self._send_command(proto.cmd_request_ras_status(ras))
 
-        if getattr(self, "door_poll_startup_only", False):
-            await self._async_startup_door_sweep()
+        if poll_doors:
+            if not runtime_only:
+                await self._async_startup_door_sweep()
+            else:
+                await self.async_request_doors(force_all=True)
+
+        if self._idle_full_sync_enabled:
+            self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
         else:
-            await self.async_request_doors(force_all=True)
+            self._next_idle_full_sync_monotonic = 0.0
 
     async def _async_startup_door_sweep(self) -> None:
         """Populate DGP door states once at startup without relying on later polling.
@@ -742,7 +1095,9 @@ class TecomHub:
             await self._send_command(proto.cmd_door_status_init())
             self._door_status_inited = True
 
-        batch_size = max(1, min(int(self.door_status_per_cycle or 1), len(self.dgp_door_ids)))
+        # Startup bootstrap should stage doors one-by-one so older panels are not hit
+        # with a burst of door recalls immediately after reload.
+        batch_size = 1
         max_passes = max(3, len(self.dgp_door_ids) * 2)
 
         for _ in range(max_passes):
@@ -820,6 +1175,33 @@ class TecomHub:
         contact-focused here. Raw words are still preserved separately for diagnostics/UI.
         """
         return "open" if (status & 0x0080) else "closed"
+
+    def _bootstrap_door_access_state_from_status(self, door: int, status: int) -> None:
+        """Populate an initial best-effort door secure state from a polled word.
+
+        CTPlus clearly performs a startup bootstrap so the UI does not come up blank. We still
+        do *not* want to mirror the reed/contact state into the lock entity during runtime.
+        So this bootstrap is deliberately conservative:
+
+        - only run when we do not already have an explicit secure/lock event for the door
+        - only infer state for *closed* doors
+        - closed words with bit 0x0010 set are treated as released/unsecured
+        - closed words without bit 0x0010 are treated as secure/locked
+
+        As soon as explicit CTPlus secure/lock events arrive, they take precedence.
+        """
+        if self.state.door_lock.get(door) in ("locked", "auto_locked", "unlocked", "auto_unlocked"):
+            return
+        if self.state.door_secure.get(door) in ("secured", "unsecured"):
+            return
+
+        if self._decode_door_contact_state(status) != "closed":
+            return
+
+        if status & 0x0010:
+            self.state.door_secure[door] = "unsecured"
+        else:
+            self.state.door_secure[door] = "secured"
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -877,6 +1259,10 @@ class TecomHub:
         # TCP support via sync+CRC scan (supports multiple frames per read)
         if not data:
             return
+        try:
+            self._last_rx_monotonic = asyncio.get_running_loop().time()
+        except RuntimeError:
+            self._last_rx_monotonic = time.monotonic()
         self._tcp_buf += data
         frames, rem = self._scan_ctplus_frames(self._tcp_buf)
         self._tcp_buf = rem
@@ -884,7 +1270,11 @@ class TecomHub:
             self._handle_ctplus_frame(fr)
 
     def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
-        self._debug_frames.append({'ts': time.time(), 'dir': 'rx', 'peer': str(addr), 'hex': data.hex()})
+        self._debug_append({'dir': 'rx', 'peer': str(addr), 'hex': data.hex(), 'datagram_len': len(data), 'parsed_kind': 'udp_datagram'})
+        try:
+            self._last_rx_monotonic = asyncio.get_running_loop().time()
+        except RuntimeError:
+            self._last_rx_monotonic = time.monotonic()
         if addr is not None:
             self._udp_last_peer = addr
         # UDP datagrams can contain multiple CTPlus frames.
@@ -901,42 +1291,331 @@ class TecomHub:
             if off != self._type_offset:
                 self._type_offset = off
             self._type_offset_known = True
-            self._handle_ctplus_frame(fr)
+            self._track_rx_frame(fr, addr)
+            self._fire_raw_frame_event(fr, addr)
+            try:
+                self._handle_ctplus_frame(fr)
+            except Exception:
+                _LOGGER.exception(
+                    "Unhandled exception while processing CTPlus frame type=0x%02X seq=0x%02X body=%s",
+                    fr.msg_type,
+                    fr.seq,
+                    fr.body.hex(),
+                )
+                self.state.last_event = f"CTPlus handler exception type 0x{fr.msg_type:02X} seq 0x{fr.seq:02X}"
+                self._notify()
 
         # If there's leftover bytes that didn't parse, surface them for troubleshooting.
         if rem and rem != data:
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": rem.hex(), "len": len(rem)})
 
-    def _send_panel_ack_immediate(self, fr: proto.Frame) -> None:
-        """Send a panel ACK immediately for unsolicited 0x40 frames.
+    def _debug_append(self, entry: dict) -> None:
+        entry.setdefault('ts', time.time())
+        try:
+            entry.setdefault('monotonic', asyncio.get_running_loop().time())
+        except RuntimeError:
+            entry.setdefault('monotonic', time.monotonic())
+        self._debug_frames.append(entry)
 
-        Using create_task() here proved too soft under load; for UDP we want the ACK
-        on the wire as quickly as possible so the panel clears its event queue instead
-        of retransmitting the same access/door event every poll cycle.
+    @staticmethod
+    def _msg_type_name(msg_type: int) -> str:
+        return {
+            proto.TYPE_EVENT_OR_DATA: 'event_or_data',
+            proto.TYPE_COMMAND: 'command',
+            proto.TYPE_PANEL_ACK: 'panel_ack',
+            proto.TYPE_HOST_ACK: 'host_ack',
+            proto.TYPE_HOST_HEARTBEAT: 'heartbeat',
+            0x49: 'panel_error',
+        }.get(msg_type, f'type_0x{msg_type:02X}')
+
+    @staticmethod
+    def _mean_ms(values: deque[float] | list[float]) -> float | None:
+        if not values:
+            return None
+        return round(sum(values) / len(values), 3)
+
+    def _command_name(self, body: bytes) -> str:
+        if not body:
+            return 'empty'
+        if body.startswith(proto.cmd_retrieve_events()):
+            return 'retrieve_events'
+        if len(body) == 6 and body[:2] == b'\x09\x04':
+            start = int.from_bytes(body[2:4], 'little')
+            end = int.from_bytes(body[4:6], 'little')
+            return f'request_input_status:{start}-{end}'
+        if len(body) == 6 and body[:2] == b'\x66\x04':
+            start = int.from_bytes(body[2:4], 'little')
+            end = int.from_bytes(body[4:6], 'little')
+            return f'request_relay_status:{start}-{end}'
+        if len(body) == 4 and body[:2] == b'\x60\x02':
+            return f'request_area_status:start_{body[2]}:count_{body[3]}'
+        if len(body) == 4 and body[:3] == b'\x04\x02\x04':
+            return f'open_door:{body[3]}'
+        if len(body) == 5 and body[:2] == b'\x03\x03':
+            action = body[2]
+            relay = int.from_bytes(body[3:5], 'little')
+            action_name = 'set' if action == 0x02 else 'reset' if action == 0x01 else f'action_0x{action:02X}'
+            return f'set_relay:{relay}:{action_name}'
+        if len(body) == 4 and body[:2] == b'\x02\x02':
+            action = body[2]
+            area = body[3]
+            action_name = {0x05: 'disarm', 0x06: 'arm_away', 0x09: 'arm_home'}.get(action, f'action_0x{action:02X}')
+            return f'set_area:{area}:{action_name}'
+        if len(body) == 9 and body[:2] == b'\x7e\x07' and body[5:8] == b'\x00\x68\x01':
+            return f'request_door_status:{body[8]}'
+        return f'body:{body[:2].hex()}'
+
+    def _frame_summary(self, fr: proto.Frame) -> dict:
+        summary = {
+            'msg_type': fr.msg_type,
+            'msg_type_hex': f'0x{fr.msg_type:02X}',
+            'msg_type_name': self._msg_type_name(fr.msg_type),
+            'seq': fr.seq,
+            'seq_hex': f'0x{fr.seq:02X}',
+            'type_offset': getattr(fr, 'type_offset', self._type_offset),
+            'has_ff': bool(getattr(fr, 'has_ff', False)),
+            'body_hex': fr.body.hex(),
+            'body_len': len(fr.body),
+        }
+        if fr.msg_type == proto.TYPE_COMMAND:
+            summary['command_name'] = self._command_name(fr.body)
+        elif fr.msg_type == proto.TYPE_HOST_HEARTBEAT:
+            summary['command_name'] = 'heartbeat'
+        elif fr.msg_type == proto.TYPE_HOST_ACK:
+            summary['command_name'] = 'host_ack'
+        elif fr.msg_type == proto.TYPE_PANEL_ACK:
+            summary['command_name'] = 'panel_ack'
+        if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
+            resp_in = proto.parse_input_status_response(fr.body)
+            resp_rel = proto.parse_relay_status_response(fr.body)
+            resp_area = proto.parse_area_status_response(fr.body)
+            resp_door = proto.parse_door_status_response(fr.body)
+            resp_ras = proto.parse_ras_status_response(fr.body)
+            ev = proto.parse_event(fr.body)
+            if resp_in:
+                start, statuses = resp_in
+                summary['parsed_kind'] = 'input_status_response'
+                summary['parsed_range'] = f'{start}-{start + len(statuses) - 1}'
+            elif resp_rel:
+                start, statuses = resp_rel
+                summary['parsed_kind'] = 'relay_status_response'
+                summary['parsed_range'] = f'{start}-{start + len(statuses) - 1}'
+            elif resp_area:
+                start, words = resp_area
+                summary['parsed_kind'] = 'area_status_response'
+                summary['parsed_range'] = f'{start}-{start + len(words) - 1}'
+            elif resp_door:
+                door, status = resp_door
+                summary['parsed_kind'] = 'door_status_response'
+                summary['door'] = door
+                summary['door_status_word'] = f'0x{status:04X}'
+            elif resp_ras:
+                ras, status = resp_ras
+                summary['parsed_kind'] = 'ras_status_response'
+                summary['ras'] = ras
+                summary['ras_status'] = f'0x{status:02X}'
+            elif ev:
+                code, obj = ev
+                summary['parsed_kind'] = 'event'
+                summary['event_code'] = code
+                summary['event_object'] = obj
+                summary['event'] = decode_ctplus_event(code, obj, fr.body.hex())
+            else:
+                summary['parsed_kind'] = 'unclassified_data'
+        return summary
+
+    def _track_tx_frame(self, fr: proto.Frame, payload: bytes, peer, *, note: str | None = None, extra: dict | None = None) -> None:
+        entry = {
+            'dir': 'tx',
+            'peer': str(peer),
+            'hex': payload.hex(),
+            **self._frame_summary(fr),
+        }
+        if note:
+            entry['note'] = note
+        if extra:
+            entry.update(extra)
+        self._debug_append(entry)
+        if fr.msg_type in (proto.TYPE_COMMAND, proto.TYPE_HOST_HEARTBEAT):
+            self._pending_host_frames[fr.seq] = {
+                'monotonic': entry['monotonic'],
+                'ts': entry['ts'],
+                'msg_type': fr.msg_type,
+                'msg_type_name': entry.get('msg_type_name'),
+                'command_name': entry.get('command_name'),
+                'hex': payload.hex(),
+                'body_hex': fr.body.hex(),
+            }
+
+    def _track_rx_frame(self, fr: proto.Frame, addr=None) -> None:  # noqa: ANN001
+        entry = {
+            'dir': 'rx',
+            'peer': str(addr if addr is not None else self._udp_last_peer),
+            'hex': fr.to_bytes().hex(),
+            **self._frame_summary(fr),
+        }
+        entry.setdefault('ts', time.time())
+        try:
+            entry.setdefault('monotonic', asyncio.get_running_loop().time())
+        except RuntimeError:
+            entry.setdefault('monotonic', time.monotonic())
+
+        if fr.msg_type == proto.TYPE_PANEL_ACK:
+            pending = self._pending_host_frames.pop(fr.seq, None)
+            if pending is not None:
+                rtt_ms = round((entry['monotonic'] - pending['monotonic']) * 1000.0, 3)
+                entry['acks_tx'] = pending['msg_type_name']
+                entry['acks_command_name'] = pending.get('command_name')
+                entry['acks_hex'] = pending.get('hex')
+                entry['rtt_ms'] = rtt_ms
+                self._last_panel_ack_rtt_ms = rtt_ms
+                self._recent_panel_ack_rtt_ms.append(rtt_ms)
+                if pending['msg_type'] == proto.TYPE_HOST_HEARTBEAT:
+                    self._last_heartbeat_ack_rtt_ms = rtt_ms
+                    self._recent_heartbeat_ack_rtt_ms.append(rtt_ms)
+                else:
+                    self._last_command_ack_rtt_ms = rtt_ms
+                    self._recent_command_ack_rtt_ms.append(rtt_ms)
+        elif fr.msg_type == proto.TYPE_EVENT_OR_DATA:
+            key = (fr.seq, fr.body.hex())
+            self._pending_panel_events[key] = entry['monotonic']
+        self._debug_append(entry)
+
+    def _send_panel_ack_immediate(self, fr: proto.Frame) -> None:
+        """Send a panel ACK for unsolicited 0x40 frames.
+
+        The name is retained for compatibility with earlier builds, but in CTPlus mode
+        the ACK is intentionally delayed very slightly to better match CTPlus timing on
+        old Challenger panels.
         """
-        if not self.send_acks or self._udp_last_peer is None:
+        self._send_panel_ack(fr)
+
+    def _fire_raw_frame_event(self, fr: proto.Frame, addr=None) -> None:  # noqa: ANN001
+        """Expose every parsed CTPlus frame on the raw event bus for troubleshooting."""
+        try:
+            raw_bytes = fr.to_bytes()
+        except Exception:
+            raw_bytes = b""
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_raw",
+            {
+                "hex": raw_bytes.hex() if raw_bytes else fr.body.hex(),
+                "len": len(raw_bytes) if raw_bytes else len(fr.body),
+                "body_hex": fr.body.hex(),
+                "body_len": len(fr.body),
+                "seq": fr.seq,
+                "msg_type": fr.msg_type,
+                "type_offset": getattr(fr, 'type_offset', self._type_offset),
+                "peer": str(addr if addr is not None else self._udp_last_peer),
+            },
+        )
+
+    def _send_panel_ack(self, fr: proto.Frame, *, delay: float | None = None, note: str = 'panel_ack') -> None:
+        if not self.send_acks:
             return
         payload = proto.build_ack(
             fr.seq,
-            # CTPlus mirrors the incoming FF-marker on ACKs for FF-form panel events.
-            # Without this, some queued events (notably repeated/stuck alarm/access items)
-            # are accepted by HA but never retired from the panel queue.
             has_ff=getattr(fr, 'has_ff', False),
             type_offset=getattr(fr, 'type_offset', self._type_offset),
         ).to_bytes()
-        self._debug_frames.append({'ts': time.time(), 'dir': 'tx', 'peer': str(self._udp_last_peer), 'hex': payload.hex(), 'note': 'panel_ack'})
-        try:
-            if hasattr(self._transport_obj, 'sendto_nowait'):
-                self._transport_obj.sendto_nowait(payload, self._udp_last_peer)
-                return
-        except Exception as err:  # pragma: no cover - defensive logging
-            _LOGGER.debug("Immediate UDP ACK failed, falling back to async send: %s", err)
+        peer = self._udp_last_peer
+        ack_delay = self._panel_ack_delay_seconds if delay is None else max(0.0, float(delay))
+        loop = asyncio.get_running_loop()
 
-        # Fallback for non-UDP / unusual transport objects.
-        asyncio.create_task(self.async_send_bytes(payload, addr=self._udp_last_peer))
+        event_key = (fr.seq, fr.body.hex())
 
+        def _record_ack_send() -> None:
+            rx_monotonic = self._pending_panel_events.get(event_key)
+            actual_latency_ms = None
+            if rx_monotonic is not None:
+                actual_latency_ms = round((asyncio.get_running_loop().time() - rx_monotonic) * 1000.0, 3)
+                self._last_panel_event_ack_latency_ms = actual_latency_ms
+                self._recent_panel_event_ack_latency_ms.append(actual_latency_ms)
+            scheduled_delay_ms = round(ack_delay * 1000.0, 3)
+            self._last_panel_event_ack_scheduled_delay_ms = scheduled_delay_ms
+            event_decoded = None
+            ev = proto.parse_event(fr.body) if fr.msg_type == proto.TYPE_EVENT_OR_DATA else None
+            if ev:
+                event_decoded = decode_ctplus_event(ev[0], ev[1], fr.body.hex())
+            ack_frame = proto.build_ack(
+                fr.seq,
+                has_ff=getattr(fr, 'has_ff', False),
+                type_offset=getattr(fr, 'type_offset', self._type_offset),
+            )
+            self._track_tx_frame(
+                ack_frame,
+                payload,
+                peer,
+                note=note,
+                extra={
+                    'ack_for_seq': fr.seq,
+                    'ack_for_msg_type': f'0x{fr.msg_type:02X}',
+                    'ack_for_body_hex': fr.body.hex(),
+                    'ack_scheduled_delay_ms': scheduled_delay_ms,
+                    'ack_latency_ms': actual_latency_ms,
+                    'ack_for_event': event_decoded,
+                },
+            )
 
+        def _try_nowait_send() -> bool:
+            try:
+                if peer is not None and hasattr(self._transport_obj, 'sendto_nowait'):
+                    self._transport_obj.sendto_nowait(payload, peer)
+                    return True
+                if hasattr(self._transport_obj, 'send_nowait'):
+                    self._transport_obj.send_nowait(payload)
+                    return True
+            except Exception as err:  # pragma: no cover - defensive logging
+                _LOGGER.debug("Panel ACK nowait send failed, falling back to async send: %s", err)
+            return False
 
+        def _dispatch_nowait() -> None:
+            try:
+                _record_ack_send()
+                if _try_nowait_send():
+                    return
+
+                async def _fallback_async_send() -> None:
+                    try:
+                        await self.async_send_bytes(payload, addr=peer if peer is not None else None)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        _LOGGER.debug("Panel ACK async fallback send failed", exc_info=True)
+
+                asyncio.create_task(_fallback_async_send())
+            except Exception:
+                _LOGGER.debug("Panel ACK send failed", exc_info=True)
+
+        if ack_delay <= 0:
+            _dispatch_nowait()
+            return
+
+        loop.call_later(ack_delay, _dispatch_nowait)
+
+    def _schedule_followup_panel_ack(self, fr: proto.Frame, *, delay: float | None = None) -> None:
+        key = (fr.seq, fr.body.hex())
+        now = asyncio.get_running_loop().time()
+        until = self._followup_ack_until.get(key, 0.0)
+        if until > now:
+            return
+        self._followup_ack_until[key] = now + 1.0
+
+        async def _runner() -> None:
+            try:
+                followup_delay = self._panel_followup_ack_delay_seconds if delay is None else max(0.0, float(delay))
+                await asyncio.sleep(followup_delay)
+                # Only send the extra ACK while the same event is clearly being retried.
+                self._send_panel_ack(fr, delay=0.0, note='panel_ack_followup')
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug("Follow-up panel ACK send failed", exc_info=True)
+            finally:
+                if self._followup_ack_until.get(key, 0.0) <= asyncio.get_running_loop().time():
+                    self._followup_ack_until.pop(key, None)
+
+        asyncio.create_task(_runner())
 
     def _schedule_input_status_refresh(self, input_no: int, *, delay: float = 0.25) -> None:
         """Send a narrow input status query shortly after an input event.
@@ -945,7 +1624,7 @@ class TecomHub:
         many 0x96/0x97 input events in a short burst. If we immediately fire a refresh for each
         one, we can occupy the command queue and make later queued events appear to stall.
         """
-        if self.mode != MODE_CTPLUS or input_no <= 0:
+        if self.mode != MODE_CTPLUS or input_no <= 0 or self._in_quiet_mode():
             return
         now = asyncio.get_running_loop().time()
         self._poll_backoff_until = max(self._poll_backoff_until, now + 1.5)
@@ -982,7 +1661,7 @@ class TecomHub:
 
     def _schedule_door_status_refresh(self, door_no: int, *, delay: float = 0.25) -> None:
         """Coalesced targeted door status refresh after door/access events."""
-        if self.mode != MODE_CTPLUS or door_no <= 0:
+        if self.mode != MODE_CTPLUS or door_no <= 0 or self._in_quiet_mode():
             return
         now = asyncio.get_running_loop().time()
         self._poll_backoff_until = max(self._poll_backoff_until, now + 1.5)
@@ -1028,7 +1707,7 @@ class TecomHub:
         Without this, some panels keep retransmitting the same queued access/door event even
         though the immediate 0x73/0xB3 ACK is on the wire.
         """
-        if self.mode != MODE_CTPLUS:
+        if self.mode != MODE_CTPLUS or self._in_quiet_mode():
             return
         if self._retrieve_events_task and not self._retrieve_events_task.done():
             return
@@ -1075,6 +1754,12 @@ class TecomHub:
         return self._note_panel_event_retransmit(fr) > 1
 
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
+        if fr.msg_type == 0x49:
+            self._enter_quiet_mode("panel returned 0x49 for a host recall", duration=max(60.0, float(self.poll_interval) * 2.0))
+            self.state.last_event = f"Panel 0x49 {fr.body.hex()}"
+            self._notify()
+            return
+
         if fr.msg_type == proto.TYPE_EVENT_OR_DATA:
             # Always ACK 0x40 frames immediately (panel expects this for comms path health
             # and to dequeue access/alarm events).
@@ -1092,10 +1777,8 @@ class TecomHub:
                 start, statuses = resp_in
                 for i, s in enumerate(statuses):
                     inp = start + i
-                    raw_status = int(s)
-                    self.state.input_words[inp] = raw_status
-                    decoded_state, _derived_from = self.decode_input_status(raw_status)
-                    self.state.inputs[inp] = decoded_state
+                    self.state.input_words[inp] = int(s)
+                    self.state.inputs[inp] = self._input_state_from_status(int(s))
                 self.state.last_event = f"Inputs {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
@@ -1109,7 +1792,7 @@ class TecomHub:
                 self.state.last_event = f"Relays {start}-{start+len(statuses)-1}"
                 self._notify()
                 return
-                        # area status response
+            # area status response
             if resp_area:
                 start_area, words = resp_area
                 now = asyncio.get_running_loop().time()
@@ -1123,13 +1806,13 @@ class TecomHub:
                     if now < until:
                         continue
 
-                    # Confirmed from captures on this panel: 0x0000 and 0x0006 are disarmed.
-                    # Treat any other observed word as armed for now so CTPlus/RAS-initiated
-                    # changes are visible in HA without needing a reload.
-                    if w in (0x0000, 0x0003, 0x0006):
-                        self.state.areas[area] = "disarmed"
-                    else:
+                    # Bit 7 (0x0080) is the armed indicator. Lower bits carry
+                    # modifier flags (e.g. isolated inputs) that don't affect
+                    # the armed/disarmed distinction.
+                    if w & 0x0080:
                         self.state.areas[area] = "armed"
+                    else:
+                        self.state.areas[area] = "disarmed"
 
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
                 self._notify()
@@ -1154,6 +1837,7 @@ class TecomHub:
                         return
                 self.state.door_words[door] = status
                 self.state.doors[door] = decoded
+                self._bootstrap_door_access_state_from_status(door, status)
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
@@ -1172,26 +1856,59 @@ class TecomHub:
                 code, obj = ev
                 loop_now = asyncio.get_running_loop().time()
                 self._last_unsolicited_event_monotonic = loop_now
+                self._note_unsolicited_event_burst()
                 # Any unsolicited event means the panel is actively streaming queue items.
                 # Back off normal polling briefly so ACKs/events can flow without extra chatter.
                 self._poll_backoff_until = max(self._poll_backoff_until, loop_now + 2.5)
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
 
+                prev_seq = self._last_panel_event_seq
+                self._last_panel_event_seq = fr.seq
+                if prev_seq is not None and prev_seq < 0xF0 and fr.seq <= 0x03 and prev_seq > 0x03:
+                    self._enter_quiet_mode("panel event sequence restarted", duration=max(45.0, float(self.poll_interval) * 2.0))
+
                 # Suppress retransmitted duplicates on the HA event bus *and* avoid spawning
                 # extra targeted refreshes for the same repeated queue-head event.
                 repeat_count = self._note_panel_event_retransmit(fr)
                 if repeat_count > 1:
-                    self.state.last_event = f"Duplicate event suppressed: {payload.get('text') or payload.get('message')}"
-                    self._notify()
+                    now_monotonic = asyncio.get_running_loop().time()
+                    repeated_key = (fr.seq, fr.body.hex())
+                    if self._last_repeated_event_key != repeated_key:
+                        self._last_repeated_event_first_seen_monotonic = now_monotonic
+                    self._last_repeated_event_last_seen_monotonic = now_monotonic
+                    self._last_repeated_event_key = repeated_key
+                    self._last_repeated_event_raw = fr.to_bytes().hex()
+                    self._last_repeated_event_code = code
+                    self._last_repeated_event_object = obj
+                    self._last_repeated_event_count = repeat_count
+                    self._last_repeated_event_decoded = payload
+                if repeat_count >= self._panel_retry_event_threshold:
+                    self._enter_quiet_mode(
+                        f"repeated panel event retries for code 0x{code:02X} object {obj}",
+                        duration=max(90.0, self._quiet_mode_seconds),
+                    )
+                if self._in_quiet_mode() and repeat_count >= (self._panel_retry_event_threshold + 3):
+                    self._schedule_transport_restart(
+                        f"panel_retry_storm_code_0x{code:02X}_object_{obj}"
+                    )
+                if repeat_count > 1:
+                    if self._panel_followup_ack_enabled:
+                        self._schedule_followup_panel_ack(fr)
+                    # Keep duplicate-retry handling off the normal HA event/state path.
+                    # Repeated queue-head retries are still tracked in diagnostics and
+                    # quiet-mode logic, but do not generate extra entity churn or recorder
+                    # writes that could add load during a burst.
                     return
 
                 if code == 0x96:
-                    self.state.inputs[obj] = False
-                    self._schedule_input_status_refresh(obj)
+                    mapped = self._input_event_state(code)
+                    if mapped is not None:
+                        self.state.inputs[obj] = mapped
                 elif code == 0x97:
-                    self.state.inputs[obj] = True
-                    self._schedule_input_status_refresh(obj)
+                    mapped = self._input_event_state(code)
+                    if mapped is not None:
+                        self.state.inputs[obj] = mapped
                 elif code == 0x84:
                     self.state.relays[obj] = True
                 elif code == 0x85:
@@ -1208,34 +1925,29 @@ class TecomHub:
                     self.state.door_words[obj] = 1
                     self.state.doors[obj] = "open"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0xA6:
                     self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0xAF:
                     # "Secured" is a lock/secure-state event, not necessarily a contact-close event.
                     self.state.door_secure[obj] = "secured"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0xAE:
                     self.state.door_secure[obj] = "unsecured"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x86:
                     self.state.door_lock[obj] = "unlocked"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x87:
                     self.state.door_lock[obj] = "locked"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x88:
                     self.state.door_lock[obj] = "auto_unlocked"
-                    self._schedule_door_status_refresh(obj)
                 elif code == 0x89:
                     self.state.door_lock[obj] = "auto_locked"
-                    self._schedule_door_status_refresh(obj)
                 elif code in (0x92, 0x9D, 0xA7, 0xA8, 0xA9, 0xAA):
-                    self._schedule_door_status_refresh(obj)
+                    pass
 
+                # Keep runtime event handling quiet and event-driven like CTPlus.
+                # We intentionally do not chain a targeted status refresh or global
+                # retrieve-events command after normal unsolicited events.
                 # Do not automatically fire the global "Retrieve events" command here:
                 # captures show that command is useful as a manual recovery tool, but when
                 # injected into normal event flow on path 3 it causes "path event reset"
@@ -1243,6 +1955,9 @@ class TecomHub:
                 self._last_retrieve_events_key = None
 
                 self.state.last_event = payload.get('text') or payload.get('message')
+                self.state.last_event_code = code
+                self.state.last_event_object = obj
+                self.state.last_event_raw = payload.get('raw')
                 self.hass.bus.async_fire(f"{DOMAIN}_event", payload)
                 # Extra event name to make filtering easier in HA
                 self.hass.bus.async_fire(f"{DOMAIN}_ctplus_event", payload)
@@ -1251,7 +1966,6 @@ class TecomHub:
 
             # Unknown 0x40 frame (data but not parsed)
             self.state.last_event = f"CTPlus 0x40 {fr.body.hex()}"
-            self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": fr.body.hex(), "len": len(fr.body)})
             self._notify()
             return
 
@@ -1278,18 +1992,87 @@ class TecomHub:
                     "door_status_mode": self.door_status_mode,
                     "door_status_per_cycle": self.door_status_per_cycle,
                     "door_poll_startup_only": getattr(self, "door_poll_startup_only", False),
+                    "send_acks": self.send_acks,
+                    "send_heartbeats": self.send_heartbeats,
+                    "heartbeat_interval": self.heartbeat_interval,
                     "min_send_interval_ms": self.min_send_interval_ms,
+                    "panel_ack_delay_ms": round(self._panel_ack_delay_seconds * 1000.0, 3),
+                    "panel_followup_ack_enabled": bool(self._panel_followup_ack_enabled),
+                    "panel_followup_ack_delay_ms": round(self._panel_followup_ack_delay_seconds * 1000.0, 3),
                     "dgp_door_ids": list(self.dgp_door_ids),
                     "ras_door_ids": list(self.ras_door_ids),
                     "input_ids": list(self.input_ids),
                     "areas_count": self.areas_count,
+                    "input_mapping_mode": self.input_mapping_mode,
+                    "quiet_mode_enabled": self.quiet_mode_enabled,
+                    "periodic_session_refresh_enabled": self.periodic_session_refresh_enabled,
+                    "periodic_session_refresh_hours": self.periodic_session_refresh_hours,
+                    "periodic_session_refresh_interval": self._periodic_session_refresh_interval,
+                    "next_periodic_session_refresh_monotonic": self._next_periodic_session_refresh_monotonic,
+                    "last_periodic_session_refresh_monotonic": self._last_periodic_session_refresh_monotonic,
+                    "last_periodic_session_refresh_reason": self._last_periodic_session_refresh_reason,
+                    "quiet_mode_until": self._quiet_mode_until,
+                    "quiet_reason": self._quiet_reason,
+                    "quiet_reinit_pending": self._quiet_reinit_pending,
+                    "runtime_polling": self.runtime_polling,
+                    "runtime_poll_inputs": self.runtime_poll_inputs,
+                    "runtime_poll_areas": self.runtime_poll_areas,
+                    "runtime_poll_relays": self.runtime_poll_relays,
+                    "runtime_poll_doors": self.runtime_poll_doors,
+                    "runtime_poll_ras": self.runtime_poll_ras,
+                    "idle_full_sync_enabled": self._idle_full_sync_enabled,
+                    "idle_full_sync_interval": self._idle_full_sync_interval,
+                    "next_idle_full_sync_monotonic": self._next_idle_full_sync_monotonic,
+                    "transport_restart_pending": self._transport_restart_pending,
+                    "transport_restart_reason": self._transport_restart_reason,
+                    "transport_restart_after_quiet": self._transport_restart_after_quiet,
+                    "transport_restart_after_quiet_reason": self._transport_restart_after_quiet_reason,
+                    "burst_guard_until": self._burst_guard_until,
+                    "last_rx_monotonic": self._last_rx_monotonic,
+                    "rx_watchdog_timeout": max(self._rx_watchdog_min_seconds, max(1, int(self.heartbeat_interval or 60)) * self._rx_watchdog_multiplier),
+                    "seconds_since_last_rx": round(asyncio.get_running_loop().time() - self._last_rx_monotonic, 1) if self._last_rx_monotonic > 0 else None,
+                    "debug_frame_limit": self._debug_frame_limit,
+                    "pending_host_frames": len(self._pending_host_frames),
+                    "pending_panel_events": len(self._pending_panel_events),
                 },
                 "state": {
+                    "last_repeated_event_raw": self._last_repeated_event_raw,
+                    "last_repeated_event_code": self._last_repeated_event_code,
+                    "last_repeated_event_object": self._last_repeated_event_object,
+                    "last_repeated_event_count": self._last_repeated_event_count,
+                    "last_repeated_event_decoded": self._last_repeated_event_decoded,
+                    "last_repeated_event_first_seen_monotonic": self._last_repeated_event_first_seen_monotonic,
+                    "last_repeated_event_last_seen_monotonic": self._last_repeated_event_last_seen_monotonic,
                     "last_event": self.state.last_event,
+                    "last_event_code": self.state.last_event_code,
+                    "last_event_object": self.state.last_event_object,
+                    "last_event_raw": self.state.last_event_raw,
+                    "timing": {
+                        "last_panel_ack_rtt_ms": self._last_panel_ack_rtt_ms,
+                        "last_command_ack_rtt_ms": self._last_command_ack_rtt_ms,
+                        "last_heartbeat_ack_rtt_ms": self._last_heartbeat_ack_rtt_ms,
+                        "last_panel_event_ack_latency_ms": self._last_panel_event_ack_latency_ms,
+                        "last_panel_event_ack_scheduled_delay_ms": self._last_panel_event_ack_scheduled_delay_ms,
+                        "avg_panel_ack_rtt_ms": self._mean_ms(self._recent_panel_ack_rtt_ms),
+                        "avg_command_ack_rtt_ms": self._mean_ms(self._recent_command_ack_rtt_ms),
+                        "avg_heartbeat_ack_rtt_ms": self._mean_ms(self._recent_heartbeat_ack_rtt_ms),
+                        "avg_panel_event_ack_latency_ms": self._mean_ms(self._recent_panel_event_ack_latency_ms),
+                    },
+                    "bootstrap": {
+                        "startup_backlog_drain": self._startup_backlog_drain,
+                        "startup_backlog_started_monotonic": self._startup_backlog_started_monotonic,
+                        "last_unsolicited_event_monotonic": self._last_unsolicited_event_monotonic,
+                        "known_inputs_count": len(self.state.inputs),
+                        "known_relays_count": len(self.state.relays),
+                        "known_areas_count": len(self.state.areas),
+                        "known_doors_count": len(self.state.doors),
+                    },
                     "inputs": dict(self.state.inputs),
                     "relays": dict(self.state.relays),
                     "doors": dict(self.state.doors),
                     "door_words": {str(k): f"0x{v:04X}" for k, v in self.state.door_words.items()},
+                    "door_secure": dict(self.state.door_secure),
+                    "door_lock": dict(self.state.door_lock),
                     "areas": dict(self.state.areas),
                     "area_words": {str(k): f"0x{v:04X}" for k, v in self.state.area_words.items()},
                     "ras_status": {str(k): f"0x{v:02X}" for k, v in self.state.ras_status.items()},
@@ -1307,6 +2090,69 @@ class TecomHub:
         except Exception:
             _LOGGER.exception("Failed to write debug dump")
             return ""
+
+    async def async_request_full_sync(self) -> None:
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Full sync requires CTPlus mode")
+        await self._async_initial_sync()
+
+    async def async_reset_comms_path_event_buffer(self) -> None:
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Reset comms path event buffer requires CTPlus mode")
+        await self._send_command(proto.cmd_retrieve_events(), bypass_quiet=True)
+
+    async def async_retrieve_events(self) -> None:
+        """Backward-compatible alias for the old service name.
+
+        This command behaves like a maintenance reset/clear of the current comms-path
+        event buffer. It should not be used automatically during startup or normal runtime.
+        """
+        await self.async_reset_comms_path_event_buffer()
+
+    def _clear_door_lock_runtime_state(self) -> None:
+        """Drop cached door lock/secure state when explicitly requested.
+
+        In 3.0.5 we preserve the last known door secure/lock state across a reconnect so the
+        lock entities do not come up blank while the startup door sweep repopulates status.
+        Explicit CTPlus secure/lock events still override this cached state as soon as they
+        arrive.
+        """
+        self.state.door_secure.clear()
+        self.state.door_lock.clear()
+
+    async def async_reinitialize_session(self, log_errors: bool = True) -> None:
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Session reinitialisation requires CTPlus mode")
+        # Keep the last known door secure/lock state through reconnect so entities do
+        # not render as unknown while the slow startup door sweep repopulates polled status.
+        self._notify()
+        try:
+            await self._send_command(proto.cmd_session_hello(), bypass_quiet=True)
+            await asyncio.sleep(max(0.25, self._min_send_interval * 2.5))
+            await self._send_command(proto.cmd_session_params(), bypass_quiet=True)
+            await asyncio.sleep(max(0.25, self._min_send_interval * 2.5))
+            if getattr(self, 'dgp_door_ids', None):
+                await self._send_command(proto.cmd_door_status_init(), bypass_quiet=True)
+                self._door_status_inited = True
+        except Exception:
+            if log_errors:
+                _LOGGER.debug("CTPlus session init failed", exc_info=True)
+            return
+
+        now = asyncio.get_running_loop().time()
+        self._startup_backlog_started_monotonic = now
+        self._last_unsolicited_event_monotonic = now
+        self._startup_backlog_drain = True
+        self._quiet_mode_until = 0.0
+        self._quiet_reason = None
+        self._burst_guard_until = 0.0
+        self._transport_restart_after_quiet = False
+        self._transport_restart_after_quiet_reason = None
+        if self._idle_full_sync_enabled:
+            self._next_idle_full_sync_monotonic = asyncio.get_running_loop().time() + self._idle_full_sync_interval
+        else:
+            self._next_idle_full_sync_monotonic = 0.0
+        self._schedule_next_periodic_session_refresh(now)
 
     # -------------------------
     # Control helpers
@@ -1345,4 +2191,3 @@ class TecomHub:
         self._notify()
 
         await self._send_command(proto.cmd_area_disarm(area))
-

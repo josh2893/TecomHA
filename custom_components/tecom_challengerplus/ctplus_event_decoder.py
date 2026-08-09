@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import csv
-from functools import lru_cache
-from pathlib import Path
-
-_EVENTTABLE_FILE = Path(__file__).with_name("ctplus_eventtable.tsv")
+from .ctplus_eventtable_data import EVENTTABLE
 
 # Hand-confirmed overrides from supplied captures / CTPlus UI. These take precedence
 # over the bundled eventtable where field naming in the table is ambiguous for live UI.
 _CONFIRMED_TEXT = {
-    0x0B: "Armed",
-    0x0C: "Disarmed",
+    0x0B: "Secured",
+    0x0C: "Accessed",
     0x84: "On",
     0x85: "Off",
-    0x96: "Sealed",
-    0x97: "Unsealed",
+    0x96: "Unsealed",
+    0x97: "Sealed",
     0xA5: "Open",
     0xA6: "Closed",
     0xA7: "Forced",
@@ -42,28 +38,8 @@ _INPUT_CODES = {0x96,0x97}
 _RELAY_CODES = {0x84,0x85}
 _AREA_CODES = {0x0B,0x0C}
 
-@lru_cache(maxsize=1)
 def _load_eventtable() -> dict[tuple[int, int], dict]:
-    mapping: dict[tuple[int, int], dict] = {}
-    try:
-        with _EVENTTABLE_FILE.open('r', encoding='utf-8', errors='ignore') as f:
-            reader = csv.DictReader(f, delimiter='	')
-            for row in reader:
-                ch_event = (row.get('ChEvent') or '').strip().lower()
-                ch_sub = (row.get('ChSubEvent') or '').strip().lower()
-                desc = (row.get('Description') or '').strip()
-                if not ch_event or not desc:
-                    continue
-                try:
-                    ev = int(ch_event, 16)
-                    sub = int(ch_sub, 16) if ch_sub else 0
-                except ValueError:
-                    continue
-                # Prefer the first entry we see for a given wire code pair.
-                mapping.setdefault((ev, sub), row)
-    except FileNotFoundError:
-        pass
-    return mapping
+    return EVENTTABLE
 
 
 def _extract_sub_event(raw: bytes, code: int) -> int | None:

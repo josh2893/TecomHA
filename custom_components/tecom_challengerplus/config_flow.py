@@ -45,26 +45,53 @@ from .const import (
     CONF_RAS_DOOR_RANGES,
     CONF_RELAY_RANGES,
     CONF_INPUT_RANGES,
+    CONF_INPUT_MAPPING_MODE,
+    INPUT_MAPPING_CTPLUS,
+    INPUT_MAPPING_LEGACY_INVERTED,
+    INPUT_MAPPING_STATUS_ONLY,
     CONF_SEND_ACKS,
     CONF_SEND_HEARTBEATS,
     CONF_HEARTBEAT_INTERVAL,
     CONF_MIN_SEND_INTERVAL_MS,
+    CONF_PANEL_ACK_DELAY_MS,
+    CONF_PANEL_FOLLOWUP_ACK_ENABLED,
+    CONF_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    CONF_QUIET_MODE_ENABLED,
+    CONF_PERIODIC_SESSION_REFRESH_ENABLED,
+    CONF_PERIODIC_SESSION_REFRESH_HOURS,
     CONF_DOOR_STATUS_MODE,
     CONF_DOOR_STATUS_PER_CYCLE,
-    CONF_DOOR_POLL_STARTUP_ONLY,
+    CONF_RUNTIME_POLLING,
+    CONF_RUNTIME_POLL_INPUTS,
+    CONF_RUNTIME_POLL_AREAS,
+    CONF_RUNTIME_POLL_RELAYS,
+    CONF_RUNTIME_POLL_DOORS,
+    CONF_RUNTIME_POLL_RAS,
     CONF_PANEL_EXPORT_PATH,
     CONF_PANEL_EXPORT_RENAME_AREAS,
     CONF_PANEL_EXPORT_RENAME_INPUTS,
     CONF_PANEL_EXPORT_RENAME_DOORS,
     CONF_PANEL_EXPORT_RENAME_RELAYS,
     CONF_PANEL_EXPORT_RENAME_RASES,
+    DEFAULT_INPUT_MAPPING_MODE,
     DEFAULT_SEND_ACKS,
     DEFAULT_SEND_HEARTBEATS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_MIN_SEND_INTERVAL_MS,
+    DEFAULT_PANEL_ACK_DELAY_MS,
+    DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED,
+    DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS,
+    DEFAULT_QUIET_MODE_ENABLED,
+    DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED,
+    DEFAULT_PERIODIC_SESSION_REFRESH_HOURS,
     DEFAULT_DOOR_STATUS_MODE,
     DEFAULT_DOOR_STATUS_PER_CYCLE,
-    DEFAULT_DOOR_POLL_STARTUP_ONLY,
+    DEFAULT_RUNTIME_POLLING,
+    DEFAULT_RUNTIME_POLL_INPUTS,
+    DEFAULT_RUNTIME_POLL_AREAS,
+    DEFAULT_RUNTIME_POLL_RELAYS,
+    DEFAULT_RUNTIME_POLL_DOORS,
+    DEFAULT_RUNTIME_POLL_RAS,
     DEFAULT_PANEL_EXPORT_PATH,
     DEFAULT_PANEL_EXPORT_RENAME_AREAS,
     DEFAULT_PANEL_EXPORT_RENAME_INPUTS,
@@ -129,6 +156,18 @@ DOOR_STATUS_MODE_SELECTOR = selector.SelectSelector(
         mode=selector.SelectSelectorMode.DROPDOWN,
     )
 )
+
+INPUT_MAPPING_MODE_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[
+            {"label": "CTPlus / official (Unsealed = on, Sealed = off)", "value": INPUT_MAPPING_CTPLUS},
+            {"label": "Legacy 2.x inverted events", "value": INPUT_MAPPING_LEGACY_INVERTED},
+            {"label": "Status word only (ignore live input event polarity)", "value": INPUT_MAPPING_STATUS_ONLY},
+        ],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+    )
+)
+
 def _normalized_defaults(defaults: dict) -> dict:
     """Normalize defaults for backward compatibility."""
     d = dict(defaults or {})
@@ -146,13 +185,25 @@ def _normalized_defaults(defaults: dict) -> dict:
             d.setdefault(CONF_DOOR_LAST, 0)
     d.setdefault(CONF_RELAY_RANGES, "")
     d.setdefault(CONF_INPUT_RANGES, "")
+    d.setdefault(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE)
     d.setdefault(CONF_SEND_ACKS, DEFAULT_SEND_ACKS)
     d.setdefault(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS)
     d.setdefault(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS)
     d.setdefault(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS)
+    d.setdefault(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS)
+    d.setdefault(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED)
+    d.setdefault(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS)
+    d.setdefault(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
+    d.setdefault(CONF_PERIODIC_SESSION_REFRESH_ENABLED, DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED)
+    d.setdefault(CONF_PERIODIC_SESSION_REFRESH_HOURS, DEFAULT_PERIODIC_SESSION_REFRESH_HOURS)
     d.setdefault(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE)
     d.setdefault(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE)
-    d.setdefault(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY)
+    legacy_runtime = bool(d.get(CONF_RUNTIME_POLLING, False))
+    d.setdefault(CONF_RUNTIME_POLL_INPUTS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_INPUTS)
+    d.setdefault(CONF_RUNTIME_POLL_AREAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_AREAS)
+    d.setdefault(CONF_RUNTIME_POLL_RELAYS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RELAYS)
+    d.setdefault(CONF_RUNTIME_POLL_DOORS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_DOORS)
+    d.setdefault(CONF_RUNTIME_POLL_RAS, legacy_runtime if legacy_runtime else DEFAULT_RUNTIME_POLL_RAS)
     d.setdefault(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH)
     d.setdefault(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS)
     d.setdefault(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS)
@@ -199,10 +250,6 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_ENCRYPTION_KEY, default=defaults.get(CONF_ENCRYPTION_KEY, "")): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
             ),
-            vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
-            ),
-
             # Optional CTPlus export.panel import for friendly naming.
             vol.Optional(CONF_PANEL_EXPORT_PATH, default=str(defaults.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH))): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
@@ -220,6 +267,7 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_INPUT_RANGES, default=str(defaults.get(CONF_INPUT_RANGES, ""))): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
             ),
+            vol.Optional(CONF_INPUT_MAPPING_MODE, default=str(defaults.get(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE))): INPUT_MAPPING_MODE_SELECTOR,
             vol.Required(CONF_AREAS_COUNT, default=int(defaults.get(CONF_AREAS_COUNT, 0))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=1024, mode=selector.NumberSelectorMode.BOX)
             ),
@@ -251,16 +299,35 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_SEND_ACKS, default=bool(defaults.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))): selector.BooleanSelector(),
             vol.Optional(CONF_SEND_HEARTBEATS, default=bool(defaults.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))): selector.BooleanSelector(),
             vol.Optional(CONF_HEARTBEAT_INTERVAL, default=int(defaults.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=60, mode=selector.NumberSelectorMode.BOX)
+                selector.NumberSelectorConfig(min=1, max=300, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_MIN_SEND_INTERVAL_MS, default=int(defaults.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=500, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_PANEL_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=100, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_PANEL_FOLLOWUP_ACK_ENABLED, default=bool(defaults.get(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED))): selector.BooleanSelector(),
+            vol.Optional(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=250, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_QUIET_MODE_ENABLED, default=bool(defaults.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED))): selector.BooleanSelector(),
+            vol.Optional(CONF_PERIODIC_SESSION_REFRESH_ENABLED, default=bool(defaults.get(CONF_PERIODIC_SESSION_REFRESH_ENABLED, DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED))): selector.BooleanSelector(),
+            vol.Optional(CONF_PERIODIC_SESSION_REFRESH_HOURS, default=int(defaults.get(CONF_PERIODIC_SESSION_REFRESH_HOURS, DEFAULT_PERIODIC_SESSION_REFRESH_HOURS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=168, mode=selector.NumberSelectorMode.BOX)
             ),
             vol.Optional(CONF_DOOR_STATUS_MODE, default=str(defaults.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
             vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
             ),
-            vol.Optional(CONF_DOOR_POLL_STARTUP_ONLY, default=bool(defaults.get(CONF_DOOR_POLL_STARTUP_ONLY, DEFAULT_DOOR_POLL_STARTUP_ONLY))): selector.BooleanSelector(),
+            vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_RUNTIME_POLL_INPUTS, default=bool(defaults.get(CONF_RUNTIME_POLL_INPUTS, DEFAULT_RUNTIME_POLL_INPUTS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_AREAS, default=bool(defaults.get(CONF_RUNTIME_POLL_AREAS, DEFAULT_RUNTIME_POLL_AREAS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_RELAYS, default=bool(defaults.get(CONF_RUNTIME_POLL_RELAYS, DEFAULT_RUNTIME_POLL_RELAYS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_DOORS, default=bool(defaults.get(CONF_RUNTIME_POLL_DOORS, DEFAULT_RUNTIME_POLL_DOORS))): selector.BooleanSelector(),
+            vol.Optional(CONF_RUNTIME_POLL_RAS, default=bool(defaults.get(CONF_RUNTIME_POLL_RAS, DEFAULT_RUNTIME_POLL_RAS))): selector.BooleanSelector(),
         }
     )
 
