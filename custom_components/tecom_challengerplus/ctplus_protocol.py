@@ -214,6 +214,21 @@ def parse_event(body: bytes) -> Optional[Tuple[int, int]]:
     if not body:
         return None
 
+    # Variant B: 0F 0C <timestamp x4> <code> <obj_lo> <obj_hi>
+    # Checked FIRST because it is anchored at offset 0 and therefore unambiguous.
+    # The 0x8A scan below is a free search over the whole body, and event
+    # timestamps regularly contain 0x8A -- letting it run first silently
+    # mis-decoded well-formed frames (e.g. a Door 17 open event read as code
+    # 0x4D object 4517, and area arm/disarm codes landing on phantom area
+    # numbers built out of timestamp bytes).
+    if len(body) >= 9 and body[0] == 0x0F and body[1] == 0x0C:
+        code = body[6]
+        if code in (0x0B, 0x0C) and len(body) >= 11:
+            obj = body[9] | (body[10] << 8)
+        else:
+            obj = body[7] | (body[8] << 8)
+        return code, obj
+
     # Variant A: ... 8A <code> <obj_lo> <obj_hi> ...
     if 0x8A in body:
         i = body.index(0x8A)
@@ -223,15 +238,6 @@ def parse_event(body: bytes) -> Optional[Tuple[int, int]]:
             if i + 3 < len(body):
                 obj |= body[i + 3] << 8
             return code, obj
-
-    # Variant B: 0F 0C ... (capture3)
-    if len(body) >= 9 and body[0] == 0x0F and body[1] == 0x0C:
-        code = body[6]
-        if code in (0x0B, 0x0C) and len(body) >= 11:
-            obj = body[9] | (body[10] << 8)
-        else:
-            obj = body[7] | (body[8] << 8)
-        return code, obj
 
     return None
 

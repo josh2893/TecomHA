@@ -11,6 +11,39 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
+## Version 3.2.8
+
+### Input seal state now decoded with a two-bit mask
+
+Bits 5 (`0x20`) and 6 (`0x40`) of the input status byte together carry the seal indication, and which of the two clears when an input goes unsealed depends on how that input is programmed on the panel:
+
+| Byte | Bits 6:5 | Meaning |
+|---|---|---|
+| `0x63` / `0x61` | `11` | Sealed |
+| `0x43` | `10` | Unsealed — standard input types |
+| `0x23` / `0x21` | `01` | Unsealed — Type 20 (input to activate event flag, 24 hour) |
+
+Earlier builds tested bit `0x20` alone. A Type 20 input keeps that bit set in both states, so it reported **permanently sealed** regardless of the physical contact — and because status polling runs continuously, it would overwrite the correct state that the panel's own `0x96`/`0x97` events had just delivered.
+
+Seal state is now derived from the mask, which is type-agnostic. Validated against every recorded status sample paired with the panel's own seal events: all bit-level disagreements resolved.
+
+Anything that is not an explicit sealed pattern is reported as active, so an unexpected or fault condition stays visible rather than being indistinguishable from a closed contact.
+
+### Event decoder no longer mis-reads timestamps as event data
+
+`parse_event()` tried a loose scan for byte `0x8A` before checking the anchored `0F 0C` frame form. Event bodies carry a four-byte timestamp that regularly contains `0x8A`, so well-formed events were being silently mangled:
+
+```
+0f0c88488a4da511000000000000
+        ^^ 0x8A inside the timestamp
+```
+
+That decoded as code `0x4D` object 4517 instead of `0xA5` object 17 — *Door 17 Open*. When the bytes following a timestamp `0x8A` happened to land on an area arm/disarm code, it also wrote phantom area numbers into state built out of timestamp bytes (an `Area 38404` was observed).
+
+The anchored form is now checked first, with the `0x8A` scan kept only as a fallback.
+
+---
+
 ## Version 3.2.7
 
 This release closes out the last known protocol-level failure mode — a stall where the panel's event queue would stop draining and could only be cleared by disabling and re-enabling the comms path, then reloading the integration.
@@ -180,6 +213,8 @@ Only objects the integration has actually loaded are renamed; entity IDs and uni
 
 Updated from a mix of event traffic and targeted status recalls.
 
+Seal state is decoded from bits 5 and 6 of the status byte together (sealed only when both are set). This is deliberately type-agnostic: standard inputs signal unsealed by clearing bit `0x20`, while Type 20 inputs clear bit `0x40` instead. The raw status byte is exposed as an entity attribute for diagnostics.
+
 ### Areas (`alarm_control_panel`)
 
 Supports arm away, arm home, and disarm. Changes made from a keypad, CTPlus, or a mobile app are reflected back into Home Assistant.
@@ -314,6 +349,8 @@ ip.addr == <panel_ip> && udp
 
 **Nothing received for minutes, then recovery** — expected behaviour if the receive watchdog fired. Check the debug dump for `rx_watchdog_restart` entries and `seconds_since_last_rx`.
 
+**An input never leaves the off/sealed state** — on builds before 3.2.8 this affected inputs programmed as Type 20, which keep bit `0x20` set even when unsealed. Check the raw status byte in the entity attributes: if it reads `0x23` or `0x21` while the contact is open, you are seeing this bug.
+
 **Relay states only updating on reload** — output events are filtered out on the panel comms path. Enable them in the path's event filter.
 
 **Door state not matching the physical door** — an ongoing refinement area. The panel tracks several overlapping door concepts and sites map them differently depending on programming.
@@ -360,6 +397,9 @@ Good captures are simple ones: one path, one client, one action sequence, no unr
 ---
 
 ## Version history
+
+### 3.2.8
+Input seal state decoded via the `0x60` two-bit mask, fixing Type 20 inputs that reported permanently sealed. Event decoder no longer mistakes timestamp bytes for event codes.
 
 ### 3.2.7
 Full-frame byte-stuffing fix (sequence value `0x5E`); receive watchdog for automatic recovery from silent dropouts.

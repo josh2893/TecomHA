@@ -511,11 +511,23 @@ class TecomHub:
     def _input_state_from_status(self, raw: int) -> bool:
         """Return HA boolean state from an input status byte.
 
-        CTPlus event/status material consistently points to bit 0x20 meaning the input is
-        sealed/normal. In HA we surface inputs as ON when active/tripped, so sealed maps to
-        OFF and unsealed maps to ON.
+        Bits 5 (0x20) and 6 (0x40) together carry the seal indication, and which
+        of the two clears depends on how the input is programmed on the panel:
+
+            0x63 / 0x61   bits 5+6 set     sealed
+            0x43          bit 5 clear      unsealed - standard input types
+            0x23 / 0x21   bit 6 clear      unsealed - Type 20 (event flag, 24 hour)
+
+        Testing bit 0x20 alone left Type 20 inputs permanently reporting sealed,
+        because their unsealed state keeps that bit set.  Requiring BOTH bits for
+        "sealed" is type-agnostic and matches the panel's own 0x96/0x97 events on
+        every transition observed in captures.
+
+        Anything that is not an explicit sealed pattern is reported as active,
+        which keeps an unexpected or fault state visible rather than silently
+        indistinguishable from a closed contact.
         """
-        return not bool(int(raw) & 0x20)
+        return (int(raw) & 0x60) != 0x60
 
     def _input_event_state(self, code: int) -> bool | None:
         """Return HA boolean state for input event codes 0x96/0x97.
