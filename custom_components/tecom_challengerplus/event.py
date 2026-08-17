@@ -86,6 +86,11 @@ class TecomDoorAccessEvent(EventEntity):
                 # macro-driven unlock rather than a presented credential.
                 "user": user,
                 "user_name": data.get("user_name"),
+                # The most recent access that DID carry a credential. A card read
+                # is often followed by a panel-initiated access reporting no user,
+                # so this preserves who actually badged.
+                "last_user": data.get("last_user"),
+                "last_user_name": data.get("last_user_name"),
                 "door": self._door,
                 "message": data.get("message"),
             },

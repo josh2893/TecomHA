@@ -200,6 +200,11 @@ class TecomState:
     # user number -> name, populated from the panel's user database.
     # Only numbers and names are stored; credential material is not extracted.
     user_names: dict[int, str] = None
+    # Last access per door that actually carried a credential. Tracked
+    # separately because a card read is often followed within a second by a
+    # panel-initiated access (macro/interlock) reporting user 0, which would
+    # otherwise immediately mask who badged.
+    last_access: dict[int, dict] = None
 
     def __post_init__(self):
         self.inputs = self.inputs or {}
@@ -213,6 +218,7 @@ class TecomState:
         self.input_alarms = self.input_alarms or {}
         self.area_alarms = self.area_alarms or {}
         self.user_names = self.user_names or {}
+        self.last_access = self.last_access or {}
         self.door_secure = self.door_secure or {}
         self.door_lock = self.door_lock or {}
 
@@ -272,6 +278,11 @@ class TecomHub:
         self._user_store: Store = Store(hass, USER_NAME_STORE_VERSION, f"{USER_NAME_STORE_KEY}_{entry.entry_id}")
         self._user_sync_task = None
         self._user_sync_last_success: float = 0.0
+        # Rolling log of decoded access events for diagnostics. Holds the
+        # decoded fields rather than raw hex so "why is no user showing" can be
+        # answered from a dump without hand-decoding frames.
+        self._access_log: deque = deque(maxlen=40)
+        self._user_names_restored: bool = False
         self.panel_export_rename_areas: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))
         self.panel_export_rename_inputs: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS))
         self.panel_export_rename_doors: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))
@@ -2041,6 +2052,32 @@ class TecomHub:
                     # macro-driven unlock rather than a presented credential.
                     payload["user"] = ev_user or None
                     payload["user_name"] = self.user_name(ev_user)
+                    self._access_log.append({
+                        "ts": time.time(),
+                        "door": obj,
+                        "code": f"0x{code:02X}",
+                        "kind": "egress" if code == proto.EVENT_ACCESS_GRANTED_EGRESS else "granted",
+                        "user": ev_user or None,
+                        # Whether a name was resolvable, without putting the name
+                        # itself into a file that gets shared for troubleshooting.
+                        "name_known": bool(self.user_name(ev_user)) if ev_user else False,
+                        "raw_user_bytes": fr.body[10:12].hex() if len(fr.body) >= 12 else None,
+                    })
+                    if ev_user:
+                        # Only credentialed accesses update "who last entered",
+                        # so a following panel-initiated access does not erase it.
+                        self.state.last_access[obj] = {
+                            "user": ev_user,
+                            "user_name": self.user_name(ev_user),
+                            "code": code,
+                            "ts": time.time(),
+                        }
+                        payload["last_user"] = ev_user
+                        payload["last_user_name"] = self.user_name(ev_user)
+                    else:
+                        prior = self.state.last_access.get(obj) or {}
+                        payload["last_user"] = prior.get("user")
+                        payload["last_user_name"] = prior.get("user_name")
                 if ev_area:
                     payload.setdefault("area", ev_area)
 
@@ -2223,6 +2260,22 @@ class TecomHub:
                     "last_rx_monotonic": self._last_rx_monotonic,
                     "rx_watchdog_timeout": max(self._rx_watchdog_min_seconds, max(1, int(self.heartbeat_interval or 60)) * self._rx_watchdog_multiplier),
                     "seconds_since_last_rx": round(asyncio.get_running_loop().time() - self._last_rx_monotonic, 1) if self._last_rx_monotonic > 0 else None,
+                    "user_sync": {
+                        "enabled": self.user_sync_enabled,
+                        "on_startup": self.user_sync_on_startup,
+                        "periodic_enabled": self.user_sync_periodic_enabled,
+                        "interval_hours": self.user_sync_interval_hours,
+                        "last_success_epoch": self._user_sync_last_success or None,
+                        "seconds_since_last_success": (
+                            round(time.time() - self._user_sync_last_success, 1)
+                            if self._user_sync_last_success else None
+                        ),
+                        "download_in_progress": self._user_download_active,
+                        "known_user_count": len(self.state.user_names),
+                        # Number range only -- names are never written to a dump.
+                        "known_user_numbers": sorted(self.state.user_names)[:50],
+                        "cache_restored_from_storage": self._user_names_restored,
+                    },
                     "debug_frame_limit": self._debug_frame_limit,
                     "pending_host_frames": len(self._pending_host_frames),
                     "pending_panel_events": len(self._pending_panel_events),
@@ -2261,6 +2314,34 @@ class TecomHub:
                     },
                     "inputs": dict(self.state.inputs),
                     "relays": dict(self.state.relays),
+                    "input_alarms": dict(self.state.input_alarms),
+                    "area_alarms": {k: sorted(v) for k, v in self.state.area_alarms.items()},
+                    # Names are omitted deliberately: the count is enough to tell
+                    # whether sync worked, without putting user names in a file
+                    # that gets shared for troubleshooting.
+                    "access": {
+                        # Last access per door that carried a credential.
+                        "last_credentialed": {
+                            str(k): {
+                                "user": v.get("user"),
+                                "name_known": bool(v.get("user_name")),
+                                "code": v.get("code"),
+                                "age_seconds": round(time.time() - v.get("ts", 0), 1) if v.get("ts") else None,
+                            }
+                            for k, v in self.state.last_access.items()
+                        },
+                        # Decoded access events, newest last. `raw_user_bytes`
+                        # is bytes 10-11 of the event body: "0000" means the
+                        # panel reported no credential, so no user was lost.
+                        "recent_events": list(self._access_log),
+                        "summary": {
+                            "total": len(self._access_log),
+                            "with_user": sum(1 for a in self._access_log if a.get("user")),
+                            "without_user": sum(1 for a in self._access_log if not a.get("user")),
+                            "egress": sum(1 for a in self._access_log if a.get("kind") == "egress"),
+                            "names_resolved": sum(1 for a in self._access_log if a.get("name_known")),
+                        },
+                    },
                     "doors": dict(self.state.doors),
                     "door_words": {str(k): f"0x{v:04X}" for k, v in self.state.door_words.items()},
                     "door_secure": dict(self.state.door_secure),
@@ -2403,6 +2484,7 @@ class TecomHub:
                 continue
         if restored:
             self.state.user_names.update(restored)
+            self._user_names_restored = True
             _LOGGER.debug("Restored %d cached user names", len(restored))
         return len(restored)
 

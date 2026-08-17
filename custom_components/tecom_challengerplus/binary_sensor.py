@@ -16,7 +16,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities = []
     for i in getattr(hub, 'input_ids', list(range(1, hub.inputs_count + 1))):
         entities.append(TecomInputBinarySensor(hub, i))
-        entities.append(TecomInputAlarmBinarySensor(hub, i))
 
 
     # DGP door contact entities are intentionally not created in 3.0.5.
@@ -65,10 +64,19 @@ class TecomInputBinarySensor(BinarySensorEntity):
     def extra_state_attributes(self):
         state = self._hub.state.inputs.get(self._number)
         raw = getattr(self._hub.state, "input_words", {}).get(self._number)
+        # Alarm state is an attribute rather than a separate entity: a second
+        # entity per input doubles the entity list for no extra information.
+        alarms = getattr(self._hub.state, "input_alarms", {}) or {}
+        in_alarm = self._number in alarms
         attrs = {
             "input_state": state,
+            "in_alarm": in_alarm,
             "last_event": getattr(self._hub.state, "last_event", None),
         }
+        if in_alarm:
+            area = alarms.get(self._number)
+            attrs["alarm_area"] = area
+            attrs["alarm_area_name"] = self._hub.entity_name("area", area, f"Area {area}") if area else None
         if raw is not None:
             attrs.update(
                 {
@@ -214,49 +222,3 @@ class TecomRasContact(BinarySensorEntity):
         if st is None:
             return {}
         return {"raw_status": st, "raw_status_hex": f"0x{st:02X}"}
-
-
-class TecomInputAlarmBinarySensor(BinarySensorEntity):
-    """On while this input is reported in alarm by the panel."""
-
-    _attr_has_entity_name = True
-    _attr_device_class = BinarySensorDeviceClass.SAFETY
-
-    def __init__(self, hub, number: int) -> None:
-        self._hub = hub
-        self._number = number
-        base = hub.entity_name("input", number, f"Input {number}")
-        self._attr_name = f"{base} Alarm"
-        self._attr_unique_id = f"{hub.entry.entry_id}_input_{number}_alarm"
-        self._unsub = None
-
-    async def async_added_to_hass(self) -> None:
-        self._unsub = self._hub.add_listener(self.async_write_ha_state)
-
-    async def async_will_remove_from_hass(self) -> None:
-        if self._unsub:
-            self._unsub()
-            self._unsub = None
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._hub.entry.unique_id or self._hub.entry.entry_id)},
-            name=self._hub.entry.title,
-            manufacturer="Aritech / Tecom",
-            model="ChallengerPlus",
-        )
-
-    @property
-    def is_on(self):
-        return self._number in getattr(self._hub.state, "input_alarms", {})
-
-    @property
-    def extra_state_attributes(self):
-        area = getattr(self._hub.state, "input_alarms", {}).get(self._number)
-        if area is None:
-            return {}
-        return {
-            "area": area,
-            "area_name": self._hub.entity_name("area", area, f"Area {area}"),
-        }

@@ -68,7 +68,7 @@ Alarm codes are point-scoped, but the event body carries the area alongside the 
 | `0x67` | `0x68` | Exit alarm |
 | `0xC2` | `0xC3` | Local alarm |
 
-An area with any point in alarm reports `TRIGGERED` and lists the offending points in its `alarm_inputs` and `alarm_input_names` attributes. Each input gains an **Alarm** binary sensor. When the last alarm clears the area returns to the mode it held beforehand. Status polling no longer overwrites an alarm or stay-armed state.
+An area with any point in alarm reports `TRIGGERED` and lists the offending points in its `alarm_inputs` and `alarm_input_names` attributes. Individual inputs expose `in_alarm` (plus `alarm_area`) as attributes on the existing input sensor rather than as extra entities. When the last alarm clears the area returns to the mode it held beforehand. Status polling no longer overwrites an alarm or stay-armed state.
 
 ### Access events in Activity
 
@@ -85,7 +85,11 @@ Each door now has an **Access** event entity:
 
 The user number is a 16-bit little-endian value at bytes 10-11, and is read only on access codes — other event types use those bytes for unrelated fields.
 
+Access events appear in the Activity feed with the user named — `Access granted - J. Smith` — via a logbook platform. Without it Home Assistant renders only the bare `event_type`, since the Activity feed does not read entity attributes.
+
 A user of 0 means the panel opened the door itself — a macro-driven unlock rather than a presented credential. These are genuine accesses and are reported as such with no user attached.
+
+Because a panel-initiated access often lands within a second of a real card read, the last access that *did* carry a credential is preserved separately and exposed as `last_user` / `last_user_name`, so who badged is not immediately masked.
 
 ### User name sync
 
@@ -526,6 +530,12 @@ Good captures are simple ones: one path, one client, one action sequence, no unr
 ---
 
 ## Version history
+
+### 3.3.2
+Added a logbook platform so access events show the user in the Activity feed rather than a bare `access_granted`.
+
+### 3.3.1
+Removed the duplicate per-input alarm entities in favour of an `in_alarm` attribute. Preserved the last credentialed access per door so panel-initiated accesses no longer mask who badged. Added user sync diagnostics to debug dumps.
 
 ### 3.3.0
 Door lock/unlock as distinct commands. Arm, force arm, and arm home/stay separated and corrected. Alarm detection with per-input alarm sensors and area `TRIGGERED` state. Door access event entities with optional user name sync from the panel.
