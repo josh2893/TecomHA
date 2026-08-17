@@ -16,7 +16,7 @@ PENDING_RELOAD_TASK = "pending_reload_task"
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "lock", "alarm_control_panel"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "lock", "alarm_control_panel", "event", "button"]
 
 
 def _iter_hubs(hass: HomeAssistant):
@@ -79,9 +79,24 @@ def _ensure_services_registered(hass: HomeAssistant) -> None:
         for hub in _resolve_service_hubs(hass, entry_id):
             await hub.async_reinitialize_session()
 
+    async def _async_download_users(call):
+        for hub in list(hass.data.get(DOMAIN, {}).values()):
+            if getattr(hub, "async_download_users", None):
+                await hub.async_download_users()
+
+    async def _async_force_arm_area(call):
+        area = int(call.data["area"])
+        for hub in list(hass.data.get(DOMAIN, {}).values()):
+            if getattr(hub, "async_arm_area", None):
+                await hub.async_arm_area(area, mode="away", force=True)
+
     async def _async_test_event(call):
         hass.bus.async_fire(f"{DOMAIN}_test", {"note": call.data.get("note")})
 
+    if not hass.services.has_service(DOMAIN, "download_users"):
+        hass.services.async_register(DOMAIN, "download_users", _async_download_users)
+    if not hass.services.has_service(DOMAIN, "force_arm_area"):
+        hass.services.async_register(DOMAIN, "force_arm_area", _async_force_arm_area)
     if not hass.services.has_service(DOMAIN, "send_raw_hex"):
         hass.services.async_register(DOMAIN, "send_raw_hex", _async_send_raw_hex)
     if not hass.services.has_service(DOMAIN, "dump_debug"):

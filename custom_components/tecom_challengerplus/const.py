@@ -122,3 +122,21 @@ DEFAULT_PANEL_EXPORT_RENAME_INPUTS = True
 DEFAULT_PANEL_EXPORT_RENAME_DOORS = True
 DEFAULT_PANEL_EXPORT_RENAME_RELAYS = True
 DEFAULT_PANEL_EXPORT_RENAME_RASES = True
+
+# --- User name sync -------------------------------------------------------
+# Fetches the panel's user list so door access events can report who presented
+# a credential instead of a bare user number. Only user numbers and names are
+# read from the panel's records; card and PIN data is never extracted.
+CONF_USER_SYNC_ENABLED = "user_sync_enabled"
+CONF_USER_SYNC_ON_STARTUP = "user_sync_on_startup"
+CONF_USER_SYNC_PERIODIC_ENABLED = "user_sync_periodic_enabled"
+CONF_USER_SYNC_INTERVAL_HOURS = "user_sync_interval_hours"
+
+DEFAULT_USER_SYNC_ENABLED = False
+DEFAULT_USER_SYNC_ON_STARTUP = True
+DEFAULT_USER_SYNC_PERIODIC_ENABLED = False
+DEFAULT_USER_SYNC_INTERVAL_HOURS = 24
+
+# Storage key for the cached user-number -> name map.
+USER_NAME_STORE_VERSION = 1
+USER_NAME_STORE_KEY = f"{DOMAIN}_user_names"

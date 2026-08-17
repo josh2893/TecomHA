@@ -1,3 +1,26 @@
+download_users:
+  name: Download users from panel
+  description: >-
+    Fetch the panel's user list so access events can show user names instead of
+    numbers. Only user numbers and names are stored; card and PIN data in the
+    panel's records is not read.
+
+force_arm_area:
+  name: Force arm area
+  description: >-
+    Arm an area regardless of unsealed inputs. The normal arm action validates
+    first and is refused by the panel if anything is unsealed.
+  fields:
+    area:
+      name: Area
+      description: Area number to arm.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 16
+          mode: box
+
 send_raw_hex:
   name: Send raw hex
   description: Send a raw hex payload to the panel over the selected transport. Intended for protocol testing / reverse engineering.

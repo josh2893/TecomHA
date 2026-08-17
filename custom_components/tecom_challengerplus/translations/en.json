@@ -51,10 +51,14 @@
           "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)",
           "quiet_mode_enabled": "Enable quiet-mode retry backoff",
           "periodic_session_refresh_enabled": "Enable periodic session refresh",
-          "periodic_session_refresh_hours": "Periodic session refresh interval (hours)"
+          "periodic_session_refresh_hours": "Periodic session refresh interval (hours)",
+          "user_sync_enabled": "Sync user names from panel",
+          "user_sync_on_startup": "Sync users on startup",
+          "user_sync_periodic_enabled": "Periodically re-sync users",
+          "user_sync_interval_hours": "User re-sync interval"
         },
         "data_description": {
-          "host": "Example: 192.168.1.245",
+          "host": "Example: 192.168.1.50",
           "tcp_role": "Use Server only when the panel is configured to connect to Home Assistant.",
           "poll_interval": "Used only for the runtime polling groups you enable below. Startup sync always runs once automatically.",
           "panel_export_path": "Optional. Example: /config/export.panel",
@@ -80,7 +84,11 @@
           "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms.",
           "quiet_mode_enabled": "Turn this off if you do not want the integration to suppress recalls during repeated panel retry storms. Disabling it can help troubleshooting, but it also removes the current CTPlus-style backoff behaviour.",
           "periodic_session_refresh_enabled": "When enabled, Home Assistant will periodically send a soft CTPlus re-handshake to help keep long-running sessions healthy.",
-          "periodic_session_refresh_hours": "How often to run the automatic CTPlus session refresh. Example: 12 for every 12 hours."
+          "periodic_session_refresh_hours": "How often to run the automatic CTPlus session refresh. Example: 12 for every 12 hours.",
+          "user_sync_enabled": "Fetches the panel's user list so door access events show who badged (for example \"Access granted - J. Smith\") instead of a bare user number. Only user numbers and names are read; card and PIN data stored on the panel is never requested. Names are limited to 16 characters by the panel. Leave off if you would rather the integration did not read the user list.",
+          "user_sync_on_startup": "Refresh the user list each time the integration starts. Names are also saved locally, so they survive a restart even before this completes. Takes a second or two and only runs when user name sync is enabled.",
+          "user_sync_periodic_enabled": "Also re-sync on a schedule, so users added or renamed on the panel appear without a restart. Most sites change users rarely, so this is off by default - the Sync Users Now button and the tecom_challengerplus.download_users service cover occasional changes.",
+          "user_sync_interval_hours": "How often to re-sync when periodic re-sync is on. Daily (24) suits most sites. Shorter intervals add panel traffic for little benefit unless users change often."
         }
       }
     }
@@ -137,10 +145,14 @@
           "panel_followup_ack_delay_ms": "Follow-up ACK delay (milliseconds)",
           "quiet_mode_enabled": "Enable quiet-mode retry backoff",
           "periodic_session_refresh_enabled": "Enable periodic session refresh",
-          "periodic_session_refresh_hours": "Periodic session refresh interval (hours)"
+          "periodic_session_refresh_hours": "Periodic session refresh interval (hours)",
+          "user_sync_enabled": "Sync user names from panel",
+          "user_sync_on_startup": "Sync users on startup",
+          "user_sync_periodic_enabled": "Periodically re-sync users",
+          "user_sync_interval_hours": "User re-sync interval"
         },
         "data_description": {
-          "host": "Example: 192.168.1.245",
+          "host": "Example: 192.168.1.50",
           "tcp_role": "Use Server only when the panel is configured to connect to Home Assistant.",
           "poll_interval": "Used only for the runtime polling groups you enable below. Startup sync always runs once automatically.",
           "panel_export_path": "Optional. Example: /config/export.panel",
@@ -166,7 +178,27 @@
           "panel_followup_ack_delay_ms": "Only used when follow-up ACK is enabled. Example: 40 ms.",
           "quiet_mode_enabled": "Turn this off if you do not want the integration to suppress recalls during repeated panel retry storms. Disabling it can help troubleshooting, but it also removes the current CTPlus-style backoff behaviour.",
           "periodic_session_refresh_enabled": "When enabled, Home Assistant will periodically send a soft CTPlus re-handshake to help keep long-running sessions healthy.",
-          "periodic_session_refresh_hours": "How often to run the automatic CTPlus session refresh. Example: 12 for every 12 hours."
+          "periodic_session_refresh_hours": "How often to run the automatic CTPlus session refresh. Example: 12 for every 12 hours.",
+          "user_sync_enabled": "Fetches the panel's user list so door access events show who badged (for example \"Access granted - J. Smith\") instead of a bare user number. Only user numbers and names are read; card and PIN data stored on the panel is never requested. Names are limited to 16 characters by the panel. Leave off if you would rather the integration did not read the user list.",
+          "user_sync_on_startup": "Refresh the user list each time the integration starts. Names are also saved locally, so they survive a restart even before this completes. Takes a second or two and only runs when user name sync is enabled.",
+          "user_sync_periodic_enabled": "Also re-sync on a schedule, so users added or renamed on the panel appear without a restart. Most sites change users rarely, so this is off by default - the Sync Users Now button and the tecom_challengerplus.download_users service cover occasional changes.",
+          "user_sync_interval_hours": "How often to re-sync when periodic re-sync is on. Daily (24) suits most sites. Shorter intervals add panel traffic for little benefit unless users change often."
+        }
+      }
+    }
+  },
+  "services": {
+    "download_users": {
+      "name": "Sync users from panel",
+      "description": "Fetch the panel's user list so access events can show user names instead of numbers. Only user numbers and names are read; card and PIN data is not."
+    },
+    "force_arm_area": {
+      "name": "Force arm area",
+      "description": "Arm an area regardless of unsealed inputs. The normal arm action validates first and is refused by the panel if anything is unsealed.",
+      "fields": {
+        "area": {
+          "name": "Area",
+          "description": "Area number to arm."
         }
       }
     }

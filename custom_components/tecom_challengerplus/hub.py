@@ -15,6 +15,7 @@ from typing import Callable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers.storage import Store
 
 from .const import (
     DOMAIN,
@@ -71,6 +72,16 @@ from .const import (
     CONF_PANEL_EXPORT_RENAME_DOORS,
     CONF_PANEL_EXPORT_RENAME_RELAYS,
     CONF_PANEL_EXPORT_RENAME_RASES,
+    CONF_USER_SYNC_ENABLED,
+    CONF_USER_SYNC_ON_STARTUP,
+    CONF_USER_SYNC_PERIODIC_ENABLED,
+    CONF_USER_SYNC_INTERVAL_HOURS,
+    DEFAULT_USER_SYNC_ENABLED,
+    DEFAULT_USER_SYNC_ON_STARTUP,
+    DEFAULT_USER_SYNC_PERIODIC_ENABLED,
+    DEFAULT_USER_SYNC_INTERVAL_HOURS,
+    USER_NAME_STORE_VERSION,
+    USER_NAME_STORE_KEY,
     DEFAULT_INPUT_MAPPING_MODE,
     DEFAULT_SEND_ACKS,
     DEFAULT_POLL_INTERVAL_SECONDS,
@@ -182,6 +193,13 @@ class TecomState:
     ras_status: dict[int, int] = None
     door_secure: dict[int, str] = None
     door_lock: dict[int, str] = None
+    # Inputs currently in alarm, and the areas they belong to. Populated from
+    # point-scoped alarm events, which carry both the object and its area.
+    input_alarms: dict[int, int] = None
+    area_alarms: dict[int, set] = None
+    # user number -> name, populated from the panel's user database.
+    # Only numbers and names are stored; credential material is not extracted.
+    user_names: dict[int, str] = None
 
     def __post_init__(self):
         self.inputs = self.inputs or {}
@@ -192,6 +210,9 @@ class TecomState:
         self.area_words = self.area_words or {}
         self.door_words = self.door_words or {}
         self.ras_status = self.ras_status or {}
+        self.input_alarms = self.input_alarms or {}
+        self.area_alarms = self.area_alarms or {}
+        self.user_names = self.user_names or {}
         self.door_secure = self.door_secure or {}
         self.door_lock = self.door_lock or {}
 
@@ -244,6 +265,13 @@ class TecomHub:
 
         # Optional CTPlus export.panel import for friendly naming only.
         self.panel_export_path: str = str(cfg.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH) or "").strip()
+        self.user_sync_enabled: bool = bool(cfg.get(CONF_USER_SYNC_ENABLED, DEFAULT_USER_SYNC_ENABLED))
+        self.user_sync_on_startup: bool = bool(cfg.get(CONF_USER_SYNC_ON_STARTUP, DEFAULT_USER_SYNC_ON_STARTUP))
+        self.user_sync_periodic_enabled: bool = bool(cfg.get(CONF_USER_SYNC_PERIODIC_ENABLED, DEFAULT_USER_SYNC_PERIODIC_ENABLED))
+        self.user_sync_interval_hours: float = float(cfg.get(CONF_USER_SYNC_INTERVAL_HOURS, DEFAULT_USER_SYNC_INTERVAL_HOURS) or DEFAULT_USER_SYNC_INTERVAL_HOURS)
+        self._user_store: Store = Store(hass, USER_NAME_STORE_VERSION, f"{USER_NAME_STORE_KEY}_{entry.entry_id}")
+        self._user_sync_task = None
+        self._user_sync_last_success: float = 0.0
         self.panel_export_rename_areas: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))
         self.panel_export_rename_inputs: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS))
         self.panel_export_rename_doors: bool = bool(cfg.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))
@@ -292,6 +320,14 @@ class TecomHub:
 
         self.state = TecomState()
         self._area_override_until: dict[int, float] = {}
+        # Armed mode an area held before it went into alarm, so it can be
+        # restored when the alarm clears.
+        self._area_pre_alarm_state: dict[int, str | None] = {}
+        # Area awaiting a response to an arm command, so a control-failure
+        # reply can be attributed back to it.
+        self._pending_arm_area: int | None = None
+        self._user_download_active: bool = False
+        self._user_download_last: int = 0
         # When a live door event arrives, prefer it briefly over polled replies so
         # queued/stale poll responses do not make door contacts appear to lag.
         self._door_event_prefer_until: dict[int, float] = {}
@@ -460,7 +496,7 @@ class TecomHub:
         rename option is enabled, we keep the Home Assistant UI organised by
         prefixing the imported name with the object type and number. This keeps
         alphabetical sorting aligned with the panel numbering, for example:
-        ``Door 17 - Front Door - 17B`` or ``Input 19 - Front Door Egress - 17B``.
+        ``Door 17 - Main Entry`` or ``Input 19 - Main Entry Egress``.
 
         Only entities that the integration has already loaded are renamed. Entity
         IDs / unique IDs remain unchanged.
@@ -507,6 +543,44 @@ class TecomHub:
         if self._seq_out == 0:
             self._seq_out = 1
         return self._seq_out
+
+    def _set_input_alarm(self, obj: int, area: int, code: int) -> None:
+        """Record a point alarm and put its area into the triggered state."""
+        self.state.input_alarms[obj] = area
+        if not area:
+            return
+        self.state.area_alarms.setdefault(area, set()).add(obj)
+        current = self.state.areas.get(area)
+        if current != "alarm":
+            # Remember how the area was armed so it can be restored once the
+            # alarm clears without waiting for the next arm/disarm event.
+            self._area_pre_alarm_state[area] = current
+        self.state.areas[area] = "alarm"
+        _LOGGER.warning(
+            "ALARM: object %s in area %s (event code 0x%02X)", obj, area, code
+        )
+
+    def _clear_input_alarm(self, obj: int, area: int) -> None:
+        """Clear a point alarm, restoring the area once nothing is left in alarm."""
+        known_area = self.state.input_alarms.pop(obj, None)
+        area = area or known_area or 0
+        if not area:
+            return
+        remaining = self.state.area_alarms.get(area)
+        if remaining:
+            remaining.discard(obj)
+            if not remaining:
+                self.state.area_alarms.pop(area, None)
+        if not self.state.area_alarms.get(area):
+            prior = self._area_pre_alarm_state.pop(area, None)
+            if self.state.areas.get(area) == "alarm":
+                self.state.areas[area] = prior or "disarmed"
+
+    def _clear_area_alarms(self, area: int) -> None:
+        """Drop any outstanding alarms for an area (on arm or disarm)."""
+        for obj in list(self.state.area_alarms.pop(area, set())):
+            self.state.input_alarms.pop(obj, None)
+        self._area_pre_alarm_state.pop(area, None)
 
     def _input_state_from_status(self, raw: int) -> bool:
         """Return HA boolean state from an input status byte.
@@ -717,7 +791,33 @@ class TecomHub:
 
             self._poll_task = asyncio.create_task(self._poll_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+            # Restore cached user names first so access events are labelled
+            # immediately, then optionally refresh from the panel in the
+            # background so startup is not delayed by it.
+            await self.async_load_cached_user_names()
+            if self.user_sync_enabled:
+                if self.user_sync_on_startup:
+                    asyncio.create_task(self._async_startup_user_sync())
+                if self.user_sync_periodic_enabled:
+                    self._user_sync_task = asyncio.create_task(self._user_sync_loop())
+
+    async def _async_startup_user_sync(self) -> None:
+        """Refresh user names shortly after startup, once the session settles."""
+        try:
+            await asyncio.sleep(10.0)
+            await self.async_download_users()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            _LOGGER.warning("Startup user sync failed; cached names retained", exc_info=True)
+
     async def async_stop(self) -> None:
+        if self._user_sync_task:
+            self._user_sync_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._user_sync_task
+            self._user_sync_task = None
         if self._poll_task:
             self._poll_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1822,8 +1922,13 @@ class TecomHub:
                     # modifier flags (e.g. isolated inputs) that don't affect
                     # the armed/disarmed distinction.
                     if w & 0x0080:
-                        self.state.areas[area] = "armed"
-                    else:
+                        # The armed bit does not distinguish away from stay/home,
+                        # nor does it report an alarm. Only events carry that
+                        # detail, so preserve a known "home" or "alarm" rather
+                        # than downgrading it to a generic "armed" on every poll.
+                        if self.state.areas.get(area) not in ("home", "alarm"):
+                            self.state.areas[area] = "armed"
+                    elif self.state.areas.get(area) != "alarm":
                         self.state.areas[area] = "disarmed"
 
                 self.state.last_event = f"Areas {start_area}-{start_area+len(words)-1}"
@@ -1862,10 +1967,63 @@ class TecomHub:
                 self._notify()
                 return
 
+            # User database response (from async_download_users paging)
+            if fr.body[:1] == b"\x7D":
+                users = proto.parse_user_records(fr.body)
+                if users:
+                    for number, name in users:
+                        self.state.user_names[number] = name
+                    self._user_download_last = max(n for n, _ in users)
+                    self.state.last_event = f"Users {users[0][0]}-{users[-1][0]}"
+                    self._notify()
+                    return
+
+            # Control-failure response, e.g. a normal arm refused because an
+            # input is unsealed. Roll back the optimistic armed state so the UI
+            # does not show an area as armed when the panel rejected it.
+            if fr.body[:1] == b"\x02" and len(fr.body) >= 8:
+                failure = proto.parse_control_failed(fr.body)
+                if failure and failure.get("object_name"):
+                    area = self._pending_arm_area
+                    self._pending_arm_area = None
+                    detail = (
+                        f"{failure['object_name']} "
+                        f"(object {failure['object']})"
+                    )
+                    if area is not None:
+                        self._area_override_until.pop(area, None)
+                        if self.state.areas.get(area) in ("armed", "home"):
+                            self.state.areas[area] = "disarmed"
+                        self.state.last_event = f"Area {area} control failed: {detail}"
+                    else:
+                        self.state.last_event = f"Control failed: {detail}"
+                    _LOGGER.warning(
+                        "Panel refused control action 0x%02X (reason 0x%02X): %s",
+                        failure["action"],
+                        failure["reason"],
+                        detail,
+                    )
+                    self.hass.bus.async_fire(
+                        f"{DOMAIN}_control_failed",
+                        {
+                            "area": area,
+                            "action": failure["action"],
+                            "reason": failure["reason"],
+                            "object": failure["object"],
+                            "object_name": failure["object_name"],
+                        },
+                    )
+                    self._notify()
+                    return
 
             # events
             if ev:
                 code, obj = ev
+                # Point-scoped events also carry the area they belong to, so an
+                # alarm can be attributed to the right area without needing a
+                # zone-to-area map. Area-scoped codes report the area as `obj`.
+                ev_full = proto.parse_event_full(fr.body) or {}
+                ev_area = ev_full.get("area", 0)
                 loop_now = asyncio.get_running_loop().time()
                 self._last_unsolicited_event_monotonic = loop_now
                 self._note_unsolicited_event_burst()
@@ -1874,6 +2032,17 @@ class TecomHub:
                 self._poll_backoff_until = max(self._poll_backoff_until, loop_now + 2.5)
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
+                # Access events carry the user number that presented the
+                # credential. Zero means the panel/system opened the door
+                # (e.g. via a macro) rather than a card holder.
+                ev_user = ev_full.get("user") or 0
+                if code in proto.ACCESS_EVENT_CODES:
+                    # user is None when the panel opened the door itself, e.g. a
+                    # macro-driven unlock rather than a presented credential.
+                    payload["user"] = ev_user or None
+                    payload["user_name"] = self.user_name(ev_user)
+                if ev_area:
+                    payload.setdefault("area", ev_area)
 
                 prev_seq = self._last_panel_event_seq
                 self._last_panel_event_seq = fr.seq
@@ -1927,8 +2096,19 @@ class TecomHub:
                     self.state.relays[obj] = False
                 elif code == 0x0B:
                     self.state.areas[obj] = "armed"
+                    self._clear_area_alarms(obj)
+                elif code == 0x6C:
+                    # Area armed in stay/home mode. Confirmed from CTPlus capture
+                    # on Area 4; the alarm panel entity maps this to ARMED_HOME.
+                    self.state.areas[obj] = "home"
+                    self._clear_area_alarms(obj)
                 elif code == 0x0C:
                     self.state.areas[obj] = "disarmed"
+                    self._clear_area_alarms(obj)
+                elif code in proto.ALARM_EVENT_CODES:
+                    self._set_input_alarm(obj, ev_area, code)
+                elif code in proto.ALARM_RESTORE_EVENT_CODES:
+                    self._clear_input_alarm(obj, ev_area)
                 # Door event mappings confirmed from supplied CTPlus captures:
                 #   0xA5 on door 17 when physically opened
                 #   0xA6 / 0xAF on door 17 when physically closed/secured
@@ -2175,24 +2355,151 @@ class TecomHub:
             raise TecomNotSupported("Relay control requires CTPlus mode")
         await self._send_command(proto.cmd_set_relay(relay, on))
 
-    async def async_unlock_door(self, door: int) -> None:
+    async def async_open_door(self, door: int) -> None:
+        """Momentary access grant. Does not change the door's lock mode."""
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Door control requires CTPlus mode")
         await self._send_command(proto.cmd_open_door(door))
 
-    async def async_arm_area(self, area: int, mode: str = "away") -> None:
+    async def async_unlock_door(self, door: int) -> None:
+        """Set the door to unlocked/free access until locked again."""
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Door control requires CTPlus mode")
+        # Optimistic update; the panel confirms with 0x86 then 0xAE.
+        self.state.door_lock[door] = "unlocked"
+        self._door_event_prefer_until[door] = asyncio.get_running_loop().time() + 15.0
+        self._notify()
+        await self._send_command(proto.cmd_unlock_door(door))
+
+    async def async_lock_door(self, door: int) -> None:
+        """Set the door to locked/secured."""
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("Door control requires CTPlus mode")
+        # Optimistic update; the panel confirms with 0x87 then 0xAF.
+        self.state.door_lock[door] = "locked"
+        self._door_event_prefer_until[door] = asyncio.get_running_loop().time() + 15.0
+        self._notify()
+        await self._send_command(proto.cmd_lock_door(door))
+
+    async def async_load_cached_user_names(self) -> int:
+        """Restore user names saved on a previous run.
+
+        Names are cached locally so access events stay labelled across restarts
+        without waiting for (or requiring) a fresh download from the panel.
+        """
+        try:
+            data = await self._user_store.async_load()
+        except Exception:
+            _LOGGER.debug("Could not load cached user names", exc_info=True)
+            return 0
+        if not data:
+            return 0
+        names = data.get("names") or {}
+        restored = {}
+        for key, value in names.items():
+            try:
+                restored[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        if restored:
+            self.state.user_names.update(restored)
+            _LOGGER.debug("Restored %d cached user names", len(restored))
+        return len(restored)
+
+    async def _async_save_user_names(self) -> None:
+        """Persist the user-number -> name map.
+
+        Only numbers and names are written; no credential material is held in
+        memory to begin with, so none can reach storage.
+        """
+        try:
+            await self._user_store.async_save(
+                {
+                    "names": {str(k): v for k, v in self.state.user_names.items()},
+                    "updated": time.time(),
+                }
+            )
+        except Exception:
+            _LOGGER.debug("Could not save cached user names", exc_info=True)
+
+    async def _user_sync_loop(self) -> None:
+        """Re-sync user names on a schedule when periodic sync is enabled."""
+        while True:
+            try:
+                interval = max(1.0, float(self.user_sync_interval_hours)) * 3600.0
+                await asyncio.sleep(interval)
+                if not (self.user_sync_enabled and self.user_sync_periodic_enabled):
+                    continue
+                _LOGGER.debug("Periodic user sync starting")
+                await self.async_download_users()
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                _LOGGER.exception("Periodic user sync failed")
+
+    async def async_download_users(self, max_batches: int = 200) -> int:
+        """Fetch the panel's user database and cache number -> name.
+
+        The panel returns a batch at a time; ask again from the last number + 1
+        until it stops returning records. Only numbers and names are retained --
+        the credential material in each record is deliberately not extracted.
+        """
+        if self.mode != MODE_CTPLUS:
+            raise TecomNotSupported("User download requires CTPlus mode")
+
+        self._user_download_active = True
+        self._user_download_last = 0
+        try:
+            start = 1
+            for _ in range(max_batches):
+                self._user_download_last = 0
+                await self._send_command(proto.cmd_request_users(start))
+                # Give the panel time to answer before deciding we are done.
+                for _ in range(20):
+                    await asyncio.sleep(0.1)
+                    if self._user_download_last:
+                        break
+                if not self._user_download_last:
+                    break
+                start = self._user_download_last + 1
+        finally:
+            self._user_download_active = False
+
+        _LOGGER.info("User download complete: %d users", len(self.state.user_names))
+        if self.state.user_names:
+            self._user_sync_last_success = time.time()
+            await self._async_save_user_names()
+        self._notify()
+        return len(self.state.user_names)
+
+    def user_name(self, number: int) -> str | None:
+        """Friendly name for a user number, if known."""
+        if not number:
+            return None
+        return self.state.user_names.get(number)
+
+    async def async_arm_area(self, area: int, mode: str = "away", force: bool = False) -> None:
+        """Arm an area.
+
+        mode "home" issues the stay arm. Otherwise a normal (validated) arm is
+        sent, which the panel refuses if any input is unsealed; pass force=True
+        to arm regardless.
+        """
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Area control requires CTPlus mode")
 
         # Optimistically update UI and ignore status-poll words briefly (some panels report confusing words).
-        self.state.areas[area] = "armed"
+        self.state.areas[area] = "home" if mode == "home" else "armed"
         self._area_override_until[area] = asyncio.get_running_loop().time() + 120.0
+        self._pending_arm_area = area
         self._notify()
 
         if mode == "home":
             await self._send_command(proto.cmd_area_arm_home(area))
+        elif force:
+            await self._send_command(proto.cmd_area_force_arm(area))
         else:
-            await self._send_command(proto.cmd_area_arm_away(area))
+            await self._send_command(proto.cmd_area_arm(area))
     async def async_disarm_area(self, area: int) -> None:
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Area control requires CTPlus mode")

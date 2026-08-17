@@ -116,7 +116,9 @@ class TecomDoorLock(LockEntity, RestoreEntity):
         return attrs
 
     async def async_lock(self, **kwargs):
-        return
+        if getattr(self._hub, "mode", "") != "ctplus":
+            raise TecomNotSupported("Door control requires CTPlus/management mode")
+        await self._hub.async_lock_door(self._door)
 
     async def async_unlock(self, **kwargs):
         if getattr(self._hub, "mode", "") != "ctplus":
@@ -124,7 +126,11 @@ class TecomDoorLock(LockEntity, RestoreEntity):
         await self._hub.async_unlock_door(self._door)
 
     async def async_open(self, **kwargs):
-        await self.async_unlock(**kwargs)
+        # Momentary access grant -- deliberately NOT the same as unlock, which
+        # latches the door open until it is locked again.
+        if getattr(self._hub, "mode", "") != "ctplus":
+            raise TecomNotSupported("Door control requires CTPlus/management mode")
+        await self._hub.async_open_door(self._door)
 
     def _lock_state_source(self) -> str:
         lock_state = getattr(self._hub.state, "door_lock", {}).get(self._door)

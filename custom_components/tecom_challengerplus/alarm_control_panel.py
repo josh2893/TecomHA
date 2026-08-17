@@ -27,9 +27,13 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
     """Represents one ChallengerPlus Area."""
 
     _attr_has_entity_name = True
+    # ARM_CUSTOM_BYPASS is mapped to the panel's force arm, which arms
+    # regardless of unsealed inputs. Plain ARM_AWAY sends the validated arm,
+    # which the panel refuses (with a reason) if anything is unsealed.
     _attr_supported_features = (
         AlarmControlPanelEntityFeature.ARM_AWAY
         | AlarmControlPanelEntityFeature.ARM_HOME
+        | AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
     )
     _attr_code_arm_required = False
     _attr_code_disarm_required = False
@@ -73,13 +77,26 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
 
     @property
     def extra_state_attributes(self):
+        attrs = {}
         w = getattr(self._hub.state, "area_words", {}).get(self._area)
-        if w is None:
-            return {}
-        return {"raw_status": w, "raw_status_hex": f"0x{w:04X}"}
+        if w is not None:
+            attrs.update({"raw_status": w, "raw_status_hex": f"0x{w:04X}"})
+        # Which points put this area into alarm, so automations and dashboards
+        # can show the cause rather than just a triggered area.
+        in_alarm = sorted(getattr(self._hub.state, "area_alarms", {}).get(self._area, set()))
+        attrs["alarm_inputs"] = in_alarm
+        attrs["alarm_input_names"] = [
+            self._hub.entity_name("input", i, f"Input {i}") for i in in_alarm
+        ]
+        return attrs
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
+        """Normal arm. The panel refuses if any input is unsealed."""
         await self._hub.async_arm_area(self._area, mode="away")
+
+    async def async_alarm_arm_custom_bypass(self, code: str | None = None) -> None:
+        """Force arm, ignoring unsealed inputs."""
+        await self._hub.async_arm_area(self._area, mode="away", force=True)
 
     async def async_alarm_arm_home(self, code: str | None = None) -> None:
         await self._hub.async_arm_area(self._area, mode="home")

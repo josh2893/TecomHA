@@ -100,6 +100,14 @@ from .const import (
     DEFAULT_PANEL_EXPORT_RENAME_RASES,
     DEFAULT_DGP_DOOR_RANGES,
     DEFAULT_RAS_DOOR_RANGES,
+    CONF_USER_SYNC_ENABLED,
+    CONF_USER_SYNC_ON_STARTUP,
+    CONF_USER_SYNC_PERIODIC_ENABLED,
+    CONF_USER_SYNC_INTERVAL_HOURS,
+    DEFAULT_USER_SYNC_ENABLED,
+    DEFAULT_USER_SYNC_ON_STARTUP,
+    DEFAULT_USER_SYNC_PERIODIC_ENABLED,
+    DEFAULT_USER_SYNC_INTERVAL_HOURS,
     CONF_AREAS_COUNT,
 )
 
@@ -212,6 +220,10 @@ def _normalized_defaults(defaults: dict) -> dict:
     d.setdefault(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES)
     d.setdefault(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES)
     d.setdefault(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES)
+    d.setdefault(CONF_USER_SYNC_ENABLED, DEFAULT_USER_SYNC_ENABLED)
+    d.setdefault(CONF_USER_SYNC_ON_STARTUP, DEFAULT_USER_SYNC_ON_STARTUP)
+    d.setdefault(CONF_USER_SYNC_PERIODIC_ENABLED, DEFAULT_USER_SYNC_PERIODIC_ENABLED)
+    d.setdefault(CONF_USER_SYNC_INTERVAL_HOURS, DEFAULT_USER_SYNC_INTERVAL_HOURS)
     return d
 
 
@@ -259,6 +271,14 @@ def _schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_PANEL_EXPORT_RENAME_DOORS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))): selector.BooleanSelector(),
             vol.Optional(CONF_PANEL_EXPORT_RENAME_RELAYS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS))): selector.BooleanSelector(),
             vol.Optional(CONF_PANEL_EXPORT_RENAME_RASES, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES))): selector.BooleanSelector(),
+
+            # User name sync
+            vol.Optional(CONF_USER_SYNC_ENABLED, default=bool(defaults.get(CONF_USER_SYNC_ENABLED, DEFAULT_USER_SYNC_ENABLED))): selector.BooleanSelector(),
+            vol.Optional(CONF_USER_SYNC_ON_STARTUP, default=bool(defaults.get(CONF_USER_SYNC_ON_STARTUP, DEFAULT_USER_SYNC_ON_STARTUP))): selector.BooleanSelector(),
+            vol.Optional(CONF_USER_SYNC_PERIODIC_ENABLED, default=bool(defaults.get(CONF_USER_SYNC_PERIODIC_ENABLED, DEFAULT_USER_SYNC_PERIODIC_ENABLED))): selector.BooleanSelector(),
+            vol.Optional(CONF_USER_SYNC_INTERVAL_HOURS, default=int(defaults.get(CONF_USER_SYNC_INTERVAL_HOURS, DEFAULT_USER_SYNC_INTERVAL_HOURS))): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=720, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="hours")
+            ),
 
             # Inputs / Areas are still simple contiguous ranges (1..N).
             vol.Required(CONF_INPUTS_COUNT, default=int(defaults.get(CONF_INPUTS_COUNT, 0))): selector.NumberSelector(

@@ -1,3 +1,5 @@
+<img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/2f9fa5ed-bc6c-4c04-86b5-c18dc6daab78" />
+
 # Tecom ChallengerPlus Home Assistant Integration
 
 A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
@@ -6,6 +8,107 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 > **Important**
 > This is **not** an official Aritech / Tecom integration. Use it carefully, especially on live security systems. A dedicated panel comms path for Home Assistant is strongly recommended.
+
+---
+
+## Version 3.3.0
+
+Door control, area arming, alarm detection, and access events with user names. Every command in this release was confirmed against a packet capture of the official software rather than inferred.
+
+### Door lock and unlock are now real commands
+
+The lock entity previously only ever sent one thing. `unlock` and `open` both issued the momentary access command, and `lock` did nothing at all — so the lock/unlock slider and the Open Door button behaved identically and the door never actually latched.
+
+Door control uses the form `04 02 <action> <door>`:
+
+| Action | Byte | Panel confirms with |
+|---|---|---|
+| Lock | `0x01` | `0x87` Door locked, then `0xAF` Door secured |
+| Unlock | `0x02` | `0x86` Door unlocked, then `0xAE` Door unsecured |
+| Momentary open | `0x04` | access grant, lock mode unchanged |
+
+Lock and unlock latch the door until changed; Open Door remains a momentary release that leaves the lock mode alone.
+
+### Arm, Force Arm, and Arm Home
+
+Area control uses the form `02 02 <action> <area>`. Earlier builds used the forcing action for everything and sent an unverified byte for arm home:
+
+| Action | Byte | Behaviour | Panel confirms with |
+|---|---|---|---|
+| Disarm | `0x05` | | `0x0C` Area disarmed |
+| Arm | `0x09` | Validates first; refused if any input is unsealed | `0x0B` Area secured |
+| Force arm | `0x06` | Arms regardless of unsealed inputs | `0x0B` Area secured |
+| Arm home / stay | `0x0A` | | `0x6C` Area secured stay |
+
+- **Arm away** sends the validated arm (`0x09`)
+- **Custom bypass** sends force arm (`0x06`), which is what arm away used to do
+- The `tecom_challengerplus.force_arm_area` service also force-arms
+
+A refused action is decoded and reported rather than silently leaving the optimistic armed state in place. The area rolls back and a `tecom_challengerplus_control_failed` event fires with the action, reason, object number and object name.
+
+Stay-armed areas now report as **Armed Home**. Event code `0x6C` was previously unhandled, so a stay-armed area fell through and displayed as Armed Away.
+
+### Alarm detection
+
+Nothing previously detected an alarm. The alarm panel entity had a `TRIGGERED` state but nothing ever set it, so an area in alarm continued to display as simply armed.
+
+Plain zone alarm is event code `0x00`. This was not identifiable from the shipped event table, where `(0, 0)` is "Comms - offline" — the code is context-dependent.
+
+Alarm codes are point-scoped, but the event body carries the area alongside the object, so no zone-to-area mapping is required:
+
+```
+0F 0C <timestamp x4> <code> <object:2> <area> <user>
+```
+
+| Alarm | Restore | Meaning |
+|---|---|---|
+| `0x00` | `0x02` | Alarm |
+| `0x04` | `0x05` | Secure alarm |
+| `0x57` | `0x58` | Multi-break alarm |
+| `0x67` | `0x68` | Exit alarm |
+| `0xC2` | `0xC3` | Local alarm |
+
+An area with any point in alarm reports `TRIGGERED` and lists the offending points in its `alarm_inputs` and `alarm_input_names` attributes. Each input gains an **Alarm** binary sensor. When the last alarm clears the area returns to the mode it held beforehand. Status polling no longer overwrites an alarm or stay-armed state.
+
+### Access events in Activity
+
+Access activity was already being received and fired on the event bus, but had nowhere to surface — the Activity feed shows entity state changes, and a card swipe changes no entity.
+
+Each door now has an **Access** event entity:
+
+| Code | Event type |
+|---|---|
+| `0x92` | `access_granted` |
+| `0x9D` | `access_granted_egress` |
+| `0xA7` | `door_forced` |
+| `0xA9` | `door_open_too_long` |
+
+The user number is a 16-bit little-endian value at bytes 10-11, and is read only on access codes — other event types use those bytes for unrelated fields.
+
+A user of 0 means the panel opened the door itself — a macro-driven unlock rather than a presented credential. These are genuine accesses and are reported as such with no user attached.
+
+### User name sync
+
+The user number is carried at bytes 10-11 of the event body, but the name is not on the wire. The panel supplies the mapping on request:
+
+```
+Request:   25 05 1D <start:2 LE> FF FF
+Response:  7D <len> 1D 2B <record x 2>     43 bytes per record
+End:       empty acknowledgement
+```
+
+User name sync is **off by default** and configurable from both the setup wizard and the options screen:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| Sync user names from panel | Off | Master switch for the feature |
+| Sync users on startup | On | Refresh each time the integration starts |
+| Periodically re-sync users | Off | Also re-sync on a schedule |
+| User re-sync interval | 24 h | How often, when periodic sync is on |
+
+Names are cached to Home Assistant storage, so access events stay labelled across restarts without waiting for a download. A **Sync Users Now** button and the `tecom_challengerplus.download_users` service both trigger an immediate refresh.
+
+**Only user numbers and names are read.** Each panel record also contains card and PIN material; that is deliberately never extracted, so none of it reaches memory, storage, or debug dumps. Names are limited to 16 characters by the panel itself.
 
 ---
 
@@ -196,9 +299,9 @@ The integration can read a CTPlus `export.panel` file and apply friendly names t
 
 Only objects the integration has actually loaded are renamed; entity IDs and unique IDs are left alone. Names are prefixed with the panel object number so Home Assistant keeps things sorted numerically rather than alphabetically:
 
-- `Door 17` → `Door 17 - Front Door - 17B`
-- `Input 19` → `Input 19 - Front Door Egress - 17B`
-- `Area 2` → `Area 2 - Shed 17B Nimrod`
+- `Door 17` → `Door 17 - Front Entry`
+- `Input 19` → `Input 19 - Front Entry Egress`
+- `Area 2` → `Area 2 - Workshop`
 
 ---
 
@@ -215,7 +318,9 @@ Seal state is decoded from bits 5 and 6 of the status byte together (sealed only
 
 ### Areas (`alarm_control_panel`)
 
-Supports arm away, arm home, and disarm. Changes made from a keypad, CTPlus, or a mobile app are reflected back into Home Assistant.
+Supports arm away (validated), force arm via custom bypass, arm home/stay, and disarm. Changes made from a keypad, CTPlus, or a mobile app are reflected back into Home Assistant.
+
+Stay-armed areas report as **Armed Home**. This distinction comes from the panel's event stream (`0x6C` stay, `0x0B` away) — the polled area status word only carries a single armed bit and cannot tell the two apart, so an area stay-armed before Home Assistant started may show as Armed Away until the next arm/disarm cycle.
 
 Armed state is determined from bit 7 (`0x0080`) of the area status word, so modifier flags such as isolated inputs do not affect the reported state.
 
@@ -227,7 +332,9 @@ Standard switches. Live state updates require output events to be enabled on the
 
 Doors are represented as a **lock entity** for control and a **Door Contact** binary sensor for contact state.
 
-- **DGP doors (17+)** support a momentary unlock / open command
+Lock and unlock latch the door until changed. **Open Door** is a separate momentary access grant that does not alter the lock mode — useful for letting someone through without leaving the door on free access.
+
+- **DGP doors (17+)** support lock, unlock, and a separate momentary open
 - **RAS doors (1–16)** are surfaced more conservatively, since a RAS may be acting as a keypad rather than a normal door controller
 
 A Challenger door is more than open/closed — the panel tracks contact, secure, and lock state as separate concepts. Exposing that more cleanly is ongoing work.
@@ -289,7 +396,29 @@ Where available, event-table fields are also included: `eventtable_description`,
 | `0x96` | Unsealed (HA state: on) |
 | `0x97` | Sealed (HA state: off) |
 
-Status byte `0x20` indicates sealed / normal. Alternative mapping modes are available in the options for panels that behaved differently under earlier 2.x builds.
+Seal state from polled status is decoded from bits 5 and 6 together — see the Inputs entity section above. Alternative mapping modes are available in the options for panels that behaved differently under earlier 2.x builds.
+
+### Alarms
+
+Alarm events are point-scoped and carry the area in the event body.
+
+| Alarm | Restore | Meaning |
+|---|---|---|
+| `0x00` | `0x02` | Alarm |
+| `0x04` | `0x05` | Secure alarm |
+| `0x57` | `0x58` | Multi-break alarm |
+| `0x67` | `0x68` | Exit alarm |
+| `0xC2` | `0xC3` | Local alarm |
+
+Note that `0x00` collides with "Comms - offline" in the event table; the meaning is context-dependent.
+
+### Areas
+
+| Code | Meaning |
+|---|---|
+| `0x0B` | Area armed (away) |
+| `0x0C` | Area disarmed |
+| `0x6C` | Area armed (stay / home) |
 
 ### Communications and modules
 
@@ -307,6 +436,8 @@ Status byte `0x20` indicates sealed / normal. Alternative mapping modes are avai
 | Service | Purpose |
 |---|---|
 | `tecom_challengerplus.dump_debug` | Write a JSON debug dump for all loaded hubs |
+| `tecom_challengerplus.force_arm_area` | Arm an area regardless of unsealed inputs |
+| `tecom_challengerplus.download_users` | Fetch user names from the panel for access events |
 | `tecom_challengerplus.request_full_sync` | Force a full status sync |
 | `tecom_challengerplus.retrieve_events` | Request delivery of queued panel events |
 | `tecom_challengerplus.reinitialize_session` | Rebuild the CTPlus session |
@@ -395,6 +526,9 @@ Good captures are simple ones: one path, one client, one action sequence, no unr
 ---
 
 ## Version history
+
+### 3.3.0
+Door lock/unlock as distinct commands. Arm, force arm, and arm home/stay separated and corrected. Alarm detection with per-input alarm sensors and area `TRIGGERED` state. Door access event entities with optional user name sync from the panel.
 
 ### 3.2.8
 Input seal state decoded via the `0x60` two-bit mask, fixing Type 20 inputs that reported permanently sealed. Event decoder no longer mistakes timestamp bytes for event codes.
