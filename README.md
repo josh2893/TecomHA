@@ -11,6 +11,18 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
+## Version 3.3.4
+
+### Disarming an alarmed area raised a false "arm refused" warning
+
+The control-failure handler treated any `0x02` response naming an object as a refused arm, without checking which action had failed. Disarming an area that was in alarm returns such a frame naming the inputs involved, which surfaced as an arm refusal on every area card.
+
+Refusals are now raised only for arm actions (`0x06` force arm, `0x09` arm, `0x0A` arm stay) and only while an arm is actually outstanding. Other `0x02` responses are recorded in the debug frame log as `unhandled_0x02_response` rather than acted on, so they can be identified from a dump instead of being silently discarded.
+
+The event also carries `action_name` and a composed `message`, so the wording matches the action attempted — `Force arm refused`, `Arm home refused` — rather than always saying `Arm refused`.
+
+---
+
 ## Version 3.3.3
 
 ### Refused arm no longer appears on every area
@@ -622,6 +634,9 @@ Good captures are simple ones: one path, one client, one action sequence, no unr
 ---
 
 ## Version history
+
+### 3.3.4
+Fixed a false "arm refused" warning when disarming an area that was in alarm.
 
 ### 3.3.3
 Alarm entities expose their area number so area-scoped events such as a refused arm can be matched to the right card.

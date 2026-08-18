@@ -1997,10 +1997,19 @@ class TecomHub:
             # does not show an area as armed when the panel rejected it.
             if fr.body[:1] == b"\x02" and len(fr.body) >= 8:
                 failure = proto.parse_control_failed(fr.body)
-                if failure and failure.get("object_name"):
+                # Only arm actions can be "refused". The panel answers other
+                # commands with 0x02 frames too -- disarming an area that is in
+                # alarm returns one naming the inputs involved -- and treating
+                # those as refusals raised a warning on every area card.
+                if (
+                    failure
+                    and failure.get("object_name")
+                    and failure.get("action") in proto.AREA_ARM_ACTIONS
+                    and self._pending_arm_areas
+                ):
                     # The panel does not echo the area in the failure, so the
                     # oldest outstanding arm is the one that failed.
-                    area = self._pending_arm_areas.pop(0) if self._pending_arm_areas else None
+                    area = self._pending_arm_areas.pop(0)
                     detail = (
                         f"{failure['object_name']} "
                         f"(object {failure['object']})"
@@ -2018,18 +2027,32 @@ class TecomHub:
                         failure["reason"],
                         detail,
                     )
+                    action_name = proto.ARM_ACTION_NAMES.get(failure["action"], "Command")
                     self.hass.bus.async_fire(
                         f"{DOMAIN}_control_failed",
                         {
                             "area": area,
                             "action": failure["action"],
+                            "action_name": action_name,
                             "reason": failure["reason"],
                             "object": failure["object"],
                             "object_name": failure["object_name"],
+                            "message": f"{action_name} refused: {failure['object_name']} unsealed",
                         },
                     )
                     self._notify()
                     return
+                if failure and failure.get("object_name"):
+                    # Not an arm refusal. Recorded rather than acted on, so the
+                    # frame can be identified from a dump without guessing.
+                    _LOGGER.debug(
+                        "Panel 0x02 response for action 0x%02X (reason 0x%02X) referencing %s",
+                        failure.get("action"), failure.get("reason"), failure.get("object_name"),
+                    )
+                    self._debug_append({
+                        'dir': 'note', 'peer': str(self._udp_last_peer), 'hex': fr.body.hex(),
+                        'note': f"unhandled_0x02_response:action=0x{failure.get('action'):02X}",
+                    })
 
             # events
             if ev:

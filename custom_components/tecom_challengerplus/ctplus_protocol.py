@@ -195,6 +195,16 @@ AREA_ACTION_FORCE_ARM = 0x06
 AREA_ACTION_ARM = 0x09
 AREA_ACTION_ARM_STAY = 0x0A
 
+# Actions that arm. Only these can produce an "arm refused" condition; the panel
+# also answers other commands with 0x02 frames, and treating those as refusals
+# raised spurious warnings (notably when disarming an area that was in alarm).
+AREA_ARM_ACTIONS = (AREA_ACTION_FORCE_ARM, AREA_ACTION_ARM, AREA_ACTION_ARM_STAY)
+ARM_ACTION_NAMES = {
+    AREA_ACTION_FORCE_ARM: "Force arm",
+    AREA_ACTION_ARM: "Arm",
+    AREA_ACTION_ARM_STAY: "Arm home",
+}
+
 # Event codes that describe an area rather than a point.
 EVENT_AREA_SECURED = 0x0B        # armed (away)
 EVENT_AREA_ACCESSED = 0x0C       # disarmed
