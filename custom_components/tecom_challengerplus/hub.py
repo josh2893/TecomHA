@@ -336,7 +336,10 @@ class TecomHub:
         self._area_pre_alarm_state: dict[int, str | None] = {}
         # Area awaiting a response to an arm command, so a control-failure
         # reply can be attributed back to it.
-        self._pending_arm_area: int | None = None
+        # Areas awaiting a response to an arm command, newest last. A list
+        # rather than a single value so two arms issued close together cannot
+        # attribute a refusal to the wrong area.
+        self._pending_arm_areas: list[int] = []
         self._user_download_active: bool = False
         self._user_download_last: int = 0
         # When a live door event arrives, prefer it briefly over polled replies so
@@ -1995,8 +1998,9 @@ class TecomHub:
             if fr.body[:1] == b"\x02" and len(fr.body) >= 8:
                 failure = proto.parse_control_failed(fr.body)
                 if failure and failure.get("object_name"):
-                    area = self._pending_arm_area
-                    self._pending_arm_area = None
+                    # The panel does not echo the area in the failure, so the
+                    # oldest outstanding arm is the one that failed.
+                    area = self._pending_arm_areas.pop(0) if self._pending_arm_areas else None
                     detail = (
                         f"{failure['object_name']} "
                         f"(object {failure['object']})"
@@ -2133,11 +2137,16 @@ class TecomHub:
                     self.state.relays[obj] = False
                 elif code == 0x0B:
                     self.state.areas[obj] = "armed"
+                    # The arm succeeded, so it is no longer awaiting a failure.
+                    if obj in self._pending_arm_areas:
+                        self._pending_arm_areas.remove(obj)
                     self._clear_area_alarms(obj)
                 elif code == 0x6C:
                     # Area armed in stay/home mode. Confirmed from CTPlus capture
                     # on Area 4; the alarm panel entity maps this to ARMED_HOME.
                     self.state.areas[obj] = "home"
+                    if obj in self._pending_arm_areas:
+                        self._pending_arm_areas.remove(obj)
                     self._clear_area_alarms(obj)
                 elif code == 0x0C:
                     self.state.areas[obj] = "disarmed"
@@ -2573,7 +2582,7 @@ class TecomHub:
         # Optimistically update UI and ignore status-poll words briefly (some panels report confusing words).
         self.state.areas[area] = "home" if mode == "home" else "armed"
         self._area_override_until[area] = asyncio.get_running_loop().time() + 120.0
-        self._pending_arm_area = area
+        self._pending_arm_areas.append(area)
         self._notify()
 
         if mode == "home":

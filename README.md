@@ -11,6 +11,18 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
+## Version 3.3.3
+
+### Refused arm no longer appears on every area
+
+A refused arm is area-scoped, but the alarm entity did not expose which area it represented, so a dashboard card had no way to tell whether a `tecom_challengerplus_control_failed` event applied to it. Every alarm card showed the refusal regardless of which area was being armed.
+
+The alarm entity now exposes its area number as an `area` attribute, and the event already carried the area, so cards can match the two. Tile pack v3.0.1 or later filters on it.
+
+Internally, pending arm commands are also tracked as a queue rather than a single slot, so two arms issued close together cannot attribute a refusal to the wrong area. A confirming arm event clears its own entry.
+
+---
+
 ## Version 3.3.2
 
 Fixes the issues reported against 3.3.0.
@@ -22,7 +34,7 @@ Home Assistant's Activity feed renders an event entity's `event_type` and nothin
 | Situation | Activity line |
 |---|---|
 | Card, name synced | `Access granted - J. Smith` |
-| Card, sync off | `Access granted - user 2307` |
+| Card, sync off | `Access granted - user 1041` |
 | Panel opened the door | `Access granted - system` |
 | Exit button | `Access granted (exit button)` |
 | Door forced | `Door forced` |
@@ -69,7 +81,7 @@ An `access` block logs the last 40 decoded access events:
 
 ```json
 { "door": 17, "code": "0x92", "kind": "granted",
-  "user": 2307, "name_known": true, "raw_user_bytes": "0309" }
+  "user": 1041, "name_known": true, "raw_user_bytes": "1104" }
 ```
 
 `raw_user_bytes` is bytes 10-11 of the event body verbatim — `"0000"` means the panel reported no credential, so nothing was lost in decoding. A `summary` counts events with and without a user, egress events, and names resolved. `last_credentialed` shows the most recent carded access per door with its age.
@@ -610,6 +622,9 @@ Good captures are simple ones: one path, one client, one action sequence, no unr
 ---
 
 ## Version history
+
+### 3.3.3
+Alarm entities expose their area number so area-scoped events such as a refused arm can be matched to the right card.
 
 ### 3.3.2
 Removed the duplicate per-input alarm entities in favour of an `in_alarm` attribute. Added a logbook platform so access events name the user in the Activity feed. Preserved the last credentialed access per door so a following access no longer masks who badged. Added access and user-sync diagnostics to debug dumps.

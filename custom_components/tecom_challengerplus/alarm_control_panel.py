@@ -77,7 +77,10 @@ class TecomAreaAlarm(AlarmControlPanelEntity):
 
     @property
     def extra_state_attributes(self):
-        attrs = {}
+        # The area number is exposed so dashboards can tell which area an
+        # area-scoped event (e.g. a refused arm) refers to. Without it a card
+        # receiving the event has no way to know whether it applies to itself.
+        attrs = {"area": self._area}
         w = getattr(self._hub.state, "area_words", {}).get(self._area)
         if w is not None:
             attrs.update({"raw_status": w, "raw_status_hex": f"0x{w:04X}"})
