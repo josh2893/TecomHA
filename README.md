@@ -11,6 +11,75 @@ This project talks to the panel using the **CTPlus / Management Software binary 
 
 ---
 
+## Version 3.3.2
+
+Fixes the issues reported against 3.3.0.
+
+### Access events now name the user in Activity
+
+Home Assistant's Activity feed renders an event entity's `event_type` and nothing else, so a card swipe showed only `access_granted` even though the user was present in the entity's attributes. A logbook platform lets the integration write its own lines:
+
+| Situation | Activity line |
+|---|---|
+| Card, name synced | `Access granted - J. Smith` |
+| Card, sync off | `Access granted - user 2307` |
+| Panel opened the door | `Access granted - system` |
+| Exit button | `Access granted (exit button)` |
+| Door forced | `Door forced` |
+| Open too long | `Door open too long` |
+
+Door exceptions carry no attribution, since a forced door has no user by nature. Lines attach to the door's access event entity, so filtering Activity by that entity still works.
+
+Home Assistant may render both this line and the event entity's own `access_granted` line. To show only the descriptive one:
+
+```yaml
+logbook:
+  exclude:
+    entity_globs:
+      - event.*_access
+```
+
+### Duplicate per-input alarm entities removed
+
+3.3.0 added a separate `_alarm` binary sensor for every input, which on a 26-input panel doubled the entity list for information that could have lived on the existing sensor.
+
+Alarm state is now an attribute on the input sensor:
+
+| Attribute | Meaning |
+|---|---|
+| `in_alarm` | Whether this input is currently in alarm |
+| `alarm_area` | The area it belongs to, when in alarm |
+| `alarm_area_name` | Friendly name of that area |
+
+Use `state_attr('binary_sensor.input_6', 'in_alarm')` in templates and automations. Area-level reporting is unchanged.
+
+After upgrading, the old `_alarm` entities show as unavailable and can be removed under Settings → Devices & Services → Entities.
+
+### Card user no longer masked by a following access
+
+The access event entity reports the most recent event, so where a door emits a second access shortly after a card read — an interlock, a macro, or an exit-button grant — the credentialed access was immediately overwritten.
+
+The last access carrying a credential is now tracked per door and exposed as `last_user` and `last_user_name` alongside the current event's `user` / `user_name`.
+
+### Debug dumps diagnose access and user sync
+
+A `user_sync` block reports enabled state, startup and periodic settings, interval, time since last successful sync, download progress, known user count, and whether the cache was restored from storage.
+
+An `access` block logs the last 40 decoded access events:
+
+```json
+{ "door": 17, "code": "0x92", "kind": "granted",
+  "user": 2307, "name_known": true, "raw_user_bytes": "0309" }
+```
+
+`raw_user_bytes` is bytes 10-11 of the event body verbatim — `"0000"` means the panel reported no credential, so nothing was lost in decoding. A `summary` counts events with and without a user, egress events, and names resolved. `last_credentialed` shows the most recent carded access per door with its age.
+
+`input_alarms` and `area_alarms` are also included.
+
+User names are never written to a dump — only numbers, counts, and a `name_known` flag, since dumps get attached to issue reports.
+
+---
+
 ## Version 3.3.0
 
 Door control, area arming, alarm detection, and access events with user names. Every command in this release was confirmed against a packet capture of the official software rather than inferred.
@@ -202,6 +271,7 @@ This covers silent dropouts specifically. It will not fire during a queue stall,
 - **Event decoding** using CTPlus event-table data
 - **Debug dump service** for troubleshooting
 - **Long-run stability** — the protocol-level stalls that previously required manual recovery are resolved
+- **Optional dashboard tiles** via a [companion repository](https://github.com/josh2893/TecomHA-Tiles-and-Addons)
 
 ### Still under refinement
 
@@ -237,6 +307,16 @@ More limited, mainly useful for basic event-driven monitoring. Does not expose t
 2. Restart Home Assistant
 
 Upgrading from an earlier 3.x build is a drop-in replacement with no configuration changes required.
+
+## Dashboard tiles
+
+A companion set of Lovelace tiles is available separately:
+
+**[TecomHA-Tiles-and-Addons](https://github.com/josh2893/TecomHA-Tiles-and-Addons)**
+
+It provides alarm, door and relay tiles that surface the integration's entities in a compact dashboard form — arm/force arm/disarm buttons, door lock and momentary open, reed contact state, schedule status, and last access with the user's name.
+
+The tiles are a frontend only; all behaviour comes from the entities this integration exposes. Tile versions track integration features, so keep both reasonably current — the current tiles expect **3.3.0 or later** for force arm, alarm cause reporting and access user display.
 
 ---
 
@@ -532,10 +612,7 @@ Good captures are simple ones: one path, one client, one action sequence, no unr
 ## Version history
 
 ### 3.3.2
-Added a logbook platform so access events show the user in the Activity feed rather than a bare `access_granted`.
-
-### 3.3.1
-Removed the duplicate per-input alarm entities in favour of an `in_alarm` attribute. Preserved the last credentialed access per door so panel-initiated accesses no longer mask who badged. Added user sync diagnostics to debug dumps.
+Removed the duplicate per-input alarm entities in favour of an `in_alarm` attribute. Added a logbook platform so access events name the user in the Activity feed. Preserved the last credentialed access per door so a following access no longer masks who badged. Added access and user-sync diagnostics to debug dumps.
 
 ### 3.3.0
 Door lock/unlock as distinct commands. Arm, force arm, and arm home/stay separated and corrected. Alarm detection with per-input alarm sensors and area `TRIGGERED` state. Door access event entities with optional user name sync from the panel.
