@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Captures and debug dumps come from a live site and contain user names,
+# card numbers, door names and panel addresses. Keep them out of the repo.
+*.pcapng
+*.pcap
+tecom_challengerplus_debug_*.json
+baseline.json
+dumps/
+captures/

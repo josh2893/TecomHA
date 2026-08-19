@@ -530,8 +530,24 @@ def cmd_request_door_status_wrapped(door: int, group: int | None = None) -> byte
 
     return bytes([0x7E, 0x07, group, 0x7C, 0x04, 0x00, 0x68, 0x01, door])
 
+# Door status word bits, isolated from captures of a single door driven through
+# every combination of locked/unlocked and open/closed:
+#
+#   locked   + closed  0x0000
+#   unlocked + closed  0x0240
+#   unlocked + open    0x12C0
+#   locked   + open    0x10C0
+#
+# The word is BIG endian. Reading it little endian swaps the bytes, which puts
+# the contact bit in the wrong half and makes an open door report as closed.
+DOOR_WORD_UNLOCKED = 0x0200   # lock released
+DOOR_WORD_CONTACT_OPEN = 0x0080   # door physically open
+DOOR_WORD_OPEN_ALT = 0x1000   # co-varies with the contact bit in all captures
+DOOR_WORD_UNSECURED = 0x0040   # set when unlocked OR open
+
+
 def parse_door_status_response(body: bytes) -> Optional[Tuple[int, int]]:
-    """Parse door status response: 69 <len> <door> <status_lo> <status_hi>."""
+    """Parse door status response: 69 <len> <door> <status hi> <status lo>."""
     if len(body) < 5 or body[0] != 0x69:
         return None
     ln = body[1]
@@ -539,8 +555,23 @@ def parse_door_status_response(body: bytes) -> Optional[Tuple[int, int]]:
     if len(payload) < 3:
         return None
     door = payload[0]
-    status = int.from_bytes(payload[1:3], "little")
+    status = int.from_bytes(payload[1:3], "big")
     return door, status
+
+
+def door_word_is_open(status: int) -> bool:
+    """Door physically open, per the contact bit."""
+    return bool(status & DOOR_WORD_CONTACT_OPEN)
+
+
+def door_word_is_unlocked(status: int) -> bool:
+    """Lock released. Independent of whether the door is physically open."""
+    return bool(status & DOOR_WORD_UNLOCKED)
+
+
+def door_word_is_unsecured(status: int) -> bool:
+    """Not secure: the lock is released, the door is open, or both."""
+    return bool(status & DOOR_WORD_UNSECURED)
 
 def cmd_request_ras_status(ras: int) -> bytes:
     """Request status for a RAS / keypad / single-door controller (doors 1-16)."""

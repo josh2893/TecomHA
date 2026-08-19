@@ -1,0 +1,46 @@
+name: Validate
+
+# Runs on every push and pull request. hassfest and HACS validation are both
+# prerequisites for the HACS default store, so keeping them green continuously
+# avoids a scramble at submission time.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 1"
+
+jobs:
+  hassfest:
+    name: Home Assistant hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  checks:
+    name: Project checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tooling
+        run: pip install pytest pyyaml
+
+      - name: Ground-truth protocol tests
+        run: python3 -m pytest tests/ -q
+
+      - name: Project checks
+        run: python3 tools/validate_project.py
+

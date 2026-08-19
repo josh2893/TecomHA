@@ -1,0 +1,53 @@
+name: Release
+
+# Publishes a GitHub release whenever a version tag is pushed, using the
+# matching section of CHANGELOG.md as the release body. This removes the
+# manual "draft a release and paste the notes" step.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check manifest version matches the tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(python3 -c "import json;print(json.load(open('custom_components/tecom_challengerplus/manifest.json'))['version'])")
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "Tag $TAG does not match manifest version $MANIFEST"
+            exit 1
+          fi
+          echo "version=$TAG" >> "$GITHUB_ENV"
+
+      - name: Extract the changelog section for this version
+        run: |
+          python3 - <<'PY' > release_notes.md
+          import os, re
+          version = os.environ["version"]
+          text = open("CHANGELOG.md").read()
+          # Grab from this version's heading up to the next one
+          pattern = rf"^## Version {re.escape(version)}\s*$(.*?)(?=^## |\Z)"
+          m = re.search(pattern, text, re.M | re.S)
+          print(m.group(1).strip() if m else f"See CHANGELOG.md for {version}.")
+          PY
+          cat release_notes.md
+
+      - name: Build the archive
+        run: |
+          cd custom_components
+          zip -rq "../tecom_challengerplus-${version}.zip" tecom_challengerplus -x "*__pycache__*" "*.pyc"
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          files: tecom_challengerplus-${{ env.version }}.zip
+          generate_release_notes: false

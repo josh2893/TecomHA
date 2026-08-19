@@ -109,9 +109,11 @@ class TecomDoorLock(LockEntity, RestoreEntity):
                 "raw_status": w,
                 "raw_status_hex": f"0x{w:04X}",
                 "raw_status_binary": f"{w:016b}",
-                "bit_0x0002_set": bool(w & 0x0002),
-                "bit_0x0010_set": bool(w & 0x0010),
-                "bit_0x0080_set": bool(w & 0x0080),
+                # Decoded bits, confirmed by driving a door through every
+                # combination of locked/unlocked and open/closed.
+                "word_contact_open": bool(w & 0x0080),
+                "word_unlocked": bool(w & 0x0200),
+                "word_unsecured": bool(w & 0x0040),
             })
         return attrs
 

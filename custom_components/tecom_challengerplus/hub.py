@@ -1290,44 +1290,40 @@ class TecomHub:
             await self._send_command(proto.cmd_request_door_status_wrapped(door))
 
     def _decode_door_contact_state(self, status: int) -> str:
-        """Best-effort contact decoding from observed CTPlus door status words.
+        """Contact state from the door status word.
 
-        Observations from supplied captures so far:
-          - 0x0000  => physically closed / secure
-          - 0xC010  => physically closed while not secure/locked
-          - 0xC090  => physically open
-
-        The 0x0080 bit appears to track contact-open state, so keep the mapping narrow and
-        contact-focused here. Raw words are still preserved separately for diagnostics/UI.
+        Confirmed by driving one door through every combination of
+        locked/unlocked and open/closed while polling status after each change.
+        See ctplus_protocol.DOOR_WORD_* for the full bit map.
         """
-        return "open" if (status & 0x0080) else "closed"
+        return "open" if proto.door_word_is_open(status) else "closed"
 
-    def _bootstrap_door_access_state_from_status(self, door: int, status: int) -> None:
-        """Populate an initial best-effort door secure state from a polled word.
+    def _apply_door_word_state(self, door: int, status: int) -> None:
+        """Derive lock and secure state from a polled door status word.
 
-        CTPlus clearly performs a startup bootstrap so the UI does not come up blank. We still
-        do *not* want to mirror the reed/contact state into the lock entity during runtime.
-        So this bootstrap is deliberately conservative:
+        The word carries this directly, so a door no longer has to be physically
+        used before its lock entity leaves "unknown". Previously lock state came
+        only from events, which meant a door nobody touched stayed unknown
+        indefinitely after a restart.
 
-        - only run when we do not already have an explicit secure/lock event for the door
-        - only infer state for *closed* doors
-        - closed words with bit 0x0010 set are treated as released/unsecured
-        - closed words without bit 0x0010 are treated as secure/locked
-
-        As soon as explicit CTPlus secure/lock events arrive, they take precedence.
+        Event-derived values distinguish auto_locked/auto_unlocked from a manual
+        lock/unlock, which the word cannot. So an existing value is kept when it
+        agrees with the word, and only replaced when the word contradicts it --
+        the poll is current, an old event may not be.
         """
-        if self.state.door_lock.get(door) in ("locked", "auto_locked", "unlocked", "auto_unlocked"):
-            return
-        if self.state.door_secure.get(door) in ("secured", "unsecured"):
-            return
+        unlocked = proto.door_word_is_unlocked(status)
+        self.state.door_secure[door] = (
+            "unsecured" if proto.door_word_is_unsecured(status) else "secured"
+        )
 
-        if self._decode_door_contact_state(status) != "closed":
-            return
-
-        if status & 0x0010:
-            self.state.door_secure[door] = "unsecured"
+        current = self.state.door_lock.get(door)
+        if unlocked:
+            if current not in ("unlocked", "auto_unlocked"):
+                self.state.door_lock[door] = "unlocked"
         else:
-            self.state.door_secure[door] = "secured"
+            if current not in ("locked", "auto_locked"):
+                self.state.door_lock[door] = "locked"
+
     def _on_printer_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
         try:
             text = data.decode("utf-8", errors="ignore")
@@ -1435,7 +1431,30 @@ class TecomHub:
         if rem and rem != data:
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": rem.hex(), "len": len(rem)})
 
+    # User-database responses carry names and credential material. Debug dumps
+    # get attached to issue reports, so the raw hex of these frames is replaced
+    # with a placeholder before it reaches the ring buffer. Keeping names out of
+    # the structured state is not enough on its own: the frame log would still
+    # contain them verbatim for any dump taken shortly after a user sync.
+    @staticmethod
+    def _redact_debug_hex(hexs: str) -> str | None:
+        if not hexs or len(hexs) < 14:
+            return None
+        try:
+            raw = bytes.fromhex(hexs)
+        except ValueError:
+            return None
+        fr = proto.parse_frame(raw)
+        if fr is None or not proto.parse_user_records(fr.body):
+            return None
+        return f"<redacted user records, {len(fr.body)} bytes>"
+
     def _debug_append(self, entry: dict) -> None:
+        redacted = self._redact_debug_hex(entry.get('hex') or '')
+        if redacted is not None:
+            entry = dict(entry)
+            entry['hex'] = ''
+            entry['redacted'] = redacted
         entry.setdefault('ts', time.time())
         try:
             entry.setdefault('monotonic', asyncio.get_running_loop().time())
@@ -1968,7 +1987,7 @@ class TecomHub:
                         return
                 self.state.door_words[door] = status
                 self.state.doors[door] = decoded
-                self._bootstrap_door_access_state_from_status(door, status)
+                self._apply_door_word_state(door, status)
                 self.state.last_event = f"Door {door} status 0x{status:04X}"
                 self._notify()
                 return
@@ -2183,11 +2202,12 @@ class TecomHub:
                 #   0xA6 / 0xAF on door 17 when physically closed/secured
                 # The entities only distinguish zero/non-zero today, so keep this conservative.
                 elif code == 0xA5:
-                    self.state.door_words[obj] = 1
+                    # Set the contact state directly. The raw word is left alone:
+                    # it carries lock and secure state too, and overwriting it
+                    # with a synthetic value discards both.
                     self.state.doors[obj] = "open"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
                 elif code == 0xA6:
-                    self.state.door_words[obj] = 0
                     self.state.doors[obj] = "closed"
                     self._door_event_prefer_until[obj] = loop_now + 15.0
                 elif code == 0xAF:
