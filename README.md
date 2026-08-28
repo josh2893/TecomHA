@@ -1,8 +1,8 @@
 <img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/2f9fa5ed-bc6c-4c04-86b5-c18dc6daab78" />
 
-# Tecom ChallengerPlus Home Assistant Integration
+# Tecom ChallengerPlus & Discovery Home Assistant Integration
 
-A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus** panels.
+A Home Assistant custom integration for **Aritech / Tecom ChallengerPlus and Discovery** panels.
 
 This project talks to the panel using the **CTPlus / Management Software binary protocol**, built by reverse engineering CTPlus traffic, packet captures, logs, and event tables. It is a community project, and as of the 3.2.x series it runs reliably for extended periods without intervention.
 
