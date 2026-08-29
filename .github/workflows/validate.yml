@@ -1,13 +1,27 @@
 name: Validate
 
-# Runs on every push and pull request. hassfest and HACS validation are both
-# prerequisites for the HACS default store, so keeping them green continuously
-# avoids a scramble at submission time.
+# Runs on pushes to main, on pull requests, and weekly. Home Assistant and HACS
+# both move, so the scheduled run catches a rule that changed without anything
+# in this repository changing.
+#
+# Documentation-only edits are excluded: they cannot break hassfest or the
+# project checks, and running the full suite on every README tweak trains you
+# to ignore the result.
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
   schedule:
     - cron: "0 0 * * 1"
+  workflow_dispatch:
 
 jobs:
   hassfest:
@@ -43,4 +57,3 @@ jobs:
 
       - name: Project checks
         run: python3 tools/validate_project.py
-
