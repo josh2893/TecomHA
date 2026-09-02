@@ -10,7 +10,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_AUTH_METHOD,
+    CONF_COMPUTER_PASSWORD,
+    CONF_ENCRYPTION_TYPE,
+    AUTH_METHOD_SECURITY_PASSWORD,
+    DEFAULT_COMPUTER_PASSWORD,
+    ENC_NONE,
+    LEGACY_ENCRYPTION_ALIASES,
+)
 
 PENDING_RELOAD_TASK = "pending_reload_task"
 
@@ -111,6 +120,51 @@ def _ensure_services_registered(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, "reinitialize_session", _async_reinitialize_session)
     if not hass.services.has_service(DOMAIN, "test_event"):
         hass.services.async_register(DOMAIN, "test_event", _async_test_event)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate a config entry to the current version.
+
+    Version 1 -> 2 (path authentication became functional)
+
+    Earlier builds ignored the configured computer password and always sent the
+    panel's documented default of 0000000000. Every installation that connects
+    today is therefore using that default, whatever the field happens to
+    contain. Honouring the stored value on upgrade would break any setup where
+    somebody had filled the field in optimistically.
+
+    So the migration pins existing entries to the value that was actually in
+    use, and records the authentication method explicitly. Users whose panel
+    uses a different security password can now set it and have it take effect.
+
+    Legacy encryption option values are also mapped to the current names. Any
+    entry with encryption configured could not previously start at all, so
+    there is no working behaviour to preserve there.
+    """
+    if entry.version >= 2:
+        return True
+
+    data = dict(entry.data)
+    options = dict(entry.options)
+
+    for store in (data, options):
+        if CONF_ENCRYPTION_TYPE in store:
+            current = str(store[CONF_ENCRYPTION_TYPE] or ENC_NONE)
+            store[CONF_ENCRYPTION_TYPE] = LEGACY_ENCRYPTION_ALIASES.get(current, current)
+
+    target = options if options else data
+    target[CONF_AUTH_METHOD] = AUTH_METHOD_SECURITY_PASSWORD
+    target[CONF_COMPUTER_PASSWORD] = DEFAULT_COMPUTER_PASSWORD
+
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=2)
+    _LOGGER.info(
+        "Migrated %s to version 2: path authentication now uses the security password "
+        "explicitly. It has been set to the panel default (%s), which is what previous "
+        "builds always sent. Change it in Options if your panel uses a different one.",
+        entry.title,
+        DEFAULT_COMPUTER_PASSWORD,
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

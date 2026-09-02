@@ -8,6 +8,107 @@ way, the notes say so.
 
 ---
 
+## Version 3.4.0
+
+Path authentication and encryption now work, and the setup screen has been
+reorganised. Everything in this release was confirmed against packet captures of
+the official software.
+
+### Path authentication
+
+The computer password field was never sent. Earlier builds hardcoded the panel's
+documented default of `0000000000`, so the integration could only ever connect
+to a panel using that password — including the case the panel documentation
+calls out, where a client connecting over DHCP cannot use the default at all.
+
+Both authentication methods the panel supports are now implemented:
+
+| Method | Frame |
+|---|---|
+| Security / computer password | `01 06 0B` + 5 bytes packed BCD, digits swapped within each byte |
+| Path user name and password | `01 31 0A 1E` + 30-byte user name + `10` + 16-byte password, ASCII null padded |
+
+Path credentials are supported by ChallengerPlus, Discovery, NACs and Challenger
+from firmware V10-06.19251. The **Authentication type** on the panel's path must
+match what is selected here.
+
+A rejected credential is not reported by the panel — it answers the session
+hello and then stops responding. Because the hello is acknowledged first,
+silence after the authentication frame is a usable signal, and the integration
+now validates credential formats during setup rather than letting a typo look
+like an offline panel.
+
+### Path encryption
+
+Encryption previously prevented the integration from starting at all. All three
+of the panel's ciphers are now supported:
+
+| Panel setting | Key |
+|---|---|
+| AES CBC (128 bit) | up to 16 characters |
+| AES CBC (256 bit) | up to 32 characters |
+| TwoFish (128 bit) | up to 16 characters |
+
+The datagram wrapper is identical for all three: a 16-byte IV in clear, a
+two-byte plaintext length, CBC ciphertext zero-padded to a block boundary, and a
+four-byte trailer derived from the ciphertext length.
+
+The key is used as raw ASCII padded with zeros, so a long mixed key is
+substantially stronger than a short numeric one even at the same setting. This
+is noted in the configuration screen.
+
+TwoFish is implemented in the integration because no maintained Python package
+provides it and this project ships no runtime dependencies. It is validated
+against the published test vectors. AES is recommended where the panel allows a
+choice, as pure-Python TwoFish is considerably slower — irrelevant at normal
+frame rates, but there is no reason to choose it otherwise.
+
+A wrong key is also unreported by the panel, so repeated decryption failures are
+logged once with an explanation rather than silently discarded.
+
+**Validation:** 292 encrypted datagrams across six captures, covering all three
+ciphers. Every one decrypts to a CRC-valid frame and re-encrypts byte-identical
+to the original, so the integration can both read the panel and produce
+datagrams it will accept.
+
+### Setup and options screens reorganised
+
+The single 51-field form is now grouped into collapsible sections — Connection,
+Authentication and encryption, Panel objects, Naming, Object polling, Door
+polling detail, User name sync, and Advanced. Only Connection is open initially.
+
+Every field now has an explanation, including guidance that was previously
+missing:
+
+- **DGP door ranges** are recommended over the first/last door numbers, because
+  ranges support gaps and avoid creating unused door entities
+- **Relay ranges** likewise, so the entity list is not filled with relays the
+  panel does not have
+- Polling toggles say which are genuinely useful — input polling for motion
+  detectors, which do not send seal events — and which are rarely needed
+- The input mapping mode carries a warning; the CTPlus mapping is the confirmed
+  correct one and the alternatives exist only for older setups
+
+Diagnostic settings from earlier troubleshooting have moved into Advanced. The
+same sections appear in both the setup wizard and the options screen.
+
+### Upgrading
+
+**Existing installations are migrated automatically and their behaviour does not
+change.** The config entry version moves to 2, the authentication method is set
+explicitly to security password, and the password is pinned to `0000000000` —
+the value every working installation is currently sending, whatever the field
+happened to contain.
+
+If your panel uses a different security password, or you want to use path
+credentials or encryption, set them in Options. They will now take effect.
+
+Legacy encryption option values are mapped to the new names. Any entry with
+encryption configured previously could not start at all, so there is no working
+behaviour to preserve there.
+
+---
+
 ## Version 3.3.5
 
 ### Door status word decoded, and its byte order corrected

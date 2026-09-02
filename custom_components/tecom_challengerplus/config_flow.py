@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import voluptuous as vol
+from homeassistant.data_entry_flow import section
 
 from homeassistant import config_entries
 from homeassistant.helpers import selector
@@ -33,7 +34,15 @@ from .const import (
     CONF_COMPUTER_PASSWORD,
     CONF_AUTH_USERNAME,
     CONF_AUTH_PASSWORD,
+    CONF_AUTH_METHOD,
     CONF_ENCRYPTION_TYPE,
+    ENC_AES_CBC_128,
+    ENC_AES_CBC_256,
+    ENC_TWOFISH_128,
+    AUTH_METHOD_SECURITY_PASSWORD,
+    AUTH_METHOD_CREDENTIALS,
+    DEFAULT_AUTH_METHOD,
+    DEFAULT_COMPUTER_PASSWORD,
     CONF_ENCRYPTION_KEY,
     CONF_POLL_INTERVAL,
     CONF_INPUTS_COUNT,
@@ -114,7 +123,7 @@ from .const import (
 MODE_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
         options=[
-            {"label": "CTPlus / Management software (binary protocol – experimental)", "value": MODE_CTPLUS},
+            {"label": "CTPlus / Management software", "value": MODE_CTPLUS},
             {"label": "Printer / Computer Event Driven (text events only)", "value": MODE_PRINTER},
         ],
         mode=selector.SelectSelectorMode.DROPDOWN,
@@ -145,9 +154,19 @@ ENC_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
         options=[
             {"label": "None", "value": ENC_NONE},
-            {"label": "Twofish (management software)", "value": ENC_TWOFISH},
-            {"label": "AES-128 (IP receiver)", "value": ENC_AES128},
-            {"label": "AES-256 (IP receiver)", "value": ENC_AES256},
+            {"label": "AES CBC (128 bit)", "value": ENC_AES_CBC_128},
+            {"label": "AES CBC (256 bit)", "value": ENC_AES_CBC_256},
+            {"label": "TwoFish (128 bit)", "value": ENC_TWOFISH_128},
+        ],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+    )
+)
+
+AUTH_METHOD_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[
+            {"label": "Security / computer password", "value": AUTH_METHOD_SECURITY_PASSWORD},
+            {"label": "Path user name and password", "value": AUTH_METHOD_CREDENTIALS},
         ],
         mode=selector.SelectSelectorMode.DROPDOWN,
     )
@@ -227,143 +246,195 @@ def _normalized_defaults(defaults: dict) -> dict:
     return d
 
 
-def _schema(defaults: dict) -> vol.Schema:
-    defaults = _normalized_defaults(defaults)
-    return vol.Schema(
-        {
-            vol.Required(CONF_MODE, default=defaults.get(CONF_MODE, MODE_CTPLUS)): MODE_SELECTOR,
-            vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Required(CONF_TRANSPORT, default=defaults.get(CONF_TRANSPORT, TRANSPORT_UDP)): TRANSPORT_SELECTOR,
-            vol.Optional(CONF_TCP_ROLE, default=defaults.get(CONF_TCP_ROLE, TCP_ROLE_CLIENT)): TCP_ROLE_SELECTOR,
-            vol.Required(CONF_SEND_PORT, default=int(defaults.get(CONF_SEND_PORT, DEFAULT_SEND_PORT))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=65535, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Required(CONF_LISTEN_PORT, default=int(defaults.get(CONF_LISTEN_PORT, DEFAULT_LISTEN_PORT))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=65535, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_BIND_HOST, default=defaults.get(CONF_BIND_HOST, "0.0.0.0")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Optional(CONF_ACCOUNT_CODE, default=defaults.get(CONF_ACCOUNT_CODE, "1")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Optional(CONF_COMPUTER_PASSWORD, default=defaults.get(CONF_COMPUTER_PASSWORD, "0000000000")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
-            vol.Optional(CONF_AUTH_USERNAME, default=defaults.get(CONF_AUTH_USERNAME, "")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Optional(CONF_AUTH_PASSWORD, default=defaults.get(CONF_AUTH_PASSWORD, "")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
-            vol.Optional(CONF_ENCRYPTION_TYPE, default=defaults.get(CONF_ENCRYPTION_TYPE, ENC_NONE)): ENC_SELECTOR,
-            vol.Optional(CONF_ENCRYPTION_KEY, default=defaults.get(CONF_ENCRYPTION_KEY, "")): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
-            # Optional CTPlus export.panel import for friendly naming.
-            vol.Optional(CONF_PANEL_EXPORT_PATH, default=str(defaults.get(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH))): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Optional(CONF_PANEL_EXPORT_RENAME_AREAS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))): selector.BooleanSelector(),
-            vol.Optional(CONF_PANEL_EXPORT_RENAME_INPUTS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS))): selector.BooleanSelector(),
-            vol.Optional(CONF_PANEL_EXPORT_RENAME_DOORS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))): selector.BooleanSelector(),
-            vol.Optional(CONF_PANEL_EXPORT_RENAME_RELAYS, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS))): selector.BooleanSelector(),
-            vol.Optional(CONF_PANEL_EXPORT_RENAME_RASES, default=bool(defaults.get(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES))): selector.BooleanSelector(),
+# Fields are grouped into collapsible sections so the form is scannable. Home
+# Assistant returns section contents nested under the section key, but the hub
+# reads a flat mapping and every existing config entry is stored flat, so
+# flatten_sections() is applied before anything is saved.
+SECTION_CONNECTION = "connection"
+SECTION_AUTH = "authentication"
+SECTION_OBJECTS = "objects"
+SECTION_NAMING = "naming"
+SECTION_POLLING = "polling"
+SECTION_DOOR_POLLING = "door_polling"
+SECTION_USER_SYNC = "user_sync"
+SECTION_ADVANCED = "advanced"
 
-            # User name sync
-            vol.Optional(CONF_USER_SYNC_ENABLED, default=bool(defaults.get(CONF_USER_SYNC_ENABLED, DEFAULT_USER_SYNC_ENABLED))): selector.BooleanSelector(),
-            vol.Optional(CONF_USER_SYNC_ON_STARTUP, default=bool(defaults.get(CONF_USER_SYNC_ON_STARTUP, DEFAULT_USER_SYNC_ON_STARTUP))): selector.BooleanSelector(),
-            vol.Optional(CONF_USER_SYNC_PERIODIC_ENABLED, default=bool(defaults.get(CONF_USER_SYNC_PERIODIC_ENABLED, DEFAULT_USER_SYNC_PERIODIC_ENABLED))): selector.BooleanSelector(),
-            vol.Optional(CONF_USER_SYNC_INTERVAL_HOURS, default=int(defaults.get(CONF_USER_SYNC_INTERVAL_HOURS, DEFAULT_USER_SYNC_INTERVAL_HOURS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=720, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="hours")
-            ),
+SECTION_KEYS = (
+    SECTION_CONNECTION, SECTION_AUTH, SECTION_OBJECTS, SECTION_NAMING,
+    SECTION_POLLING, SECTION_DOOR_POLLING, SECTION_USER_SYNC, SECTION_ADVANCED,
+)
 
-            # Inputs / Areas are still simple contiguous ranges (1..N).
-            vol.Required(CONF_INPUTS_COUNT, default=int(defaults.get(CONF_INPUTS_COUNT, 0))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=4096, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_INPUT_RANGES, default=str(defaults.get(CONF_INPUT_RANGES, ""))): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Optional(CONF_INPUT_MAPPING_MODE, default=str(defaults.get(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE))): INPUT_MAPPING_MODE_SELECTOR,
-            vol.Required(CONF_AREAS_COUNT, default=int(defaults.get(CONF_AREAS_COUNT, 0))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=1024, mode=selector.NumberSelectorMode.BOX)
-            ),
 
-            # Doors: configure by first/last number (inclusive). Set last=0 to disable.
-            vol.Required(CONF_DOOR_FIRST, default=int(defaults.get(CONF_DOOR_FIRST, 1))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=2048, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Required(CONF_DOOR_LAST, default=int(defaults.get(CONF_DOOR_LAST, 0))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
-            ),
-            # Door selection (advanced)
-            vol.Optional(CONF_DGP_DOOR_RANGES, default=str(defaults.get(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES))): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Optional(CONF_RAS_DOOR_RANGES, default=str(defaults.get(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES))): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
+def flatten_sections(user_input: dict) -> dict:
+    """Collapse section dictionaries back into a flat mapping.
 
-            # Relays: either contiguous (1..relays_count) or ranges via relay_ranges (overrides).
-            vol.Required(CONF_RELAYS_COUNT, default=int(defaults.get(CONF_RELAYS_COUNT, 0))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=2048, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_RELAY_RANGES, default=str(defaults.get(CONF_RELAY_RANGES, ""))): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
+    Keeping stored options flat means the hub is unchanged and entries created
+    before sections existed still load.
+    """
+    flat = {}
+    for key, value in (user_input or {}).items():
+        if key in SECTION_KEYS and isinstance(value, dict):
+            flat.update(value)
+        else:
+            flat[key] = value
+    return flat
 
-            # Diagnostics / tuning
-            vol.Optional(CONF_SEND_ACKS, default=bool(defaults.get(CONF_SEND_ACKS, DEFAULT_SEND_ACKS))): selector.BooleanSelector(),
-            vol.Optional(CONF_SEND_HEARTBEATS, default=bool(defaults.get(CONF_SEND_HEARTBEATS, DEFAULT_SEND_HEARTBEATS))): selector.BooleanSelector(),
-            vol.Optional(CONF_HEARTBEAT_INTERVAL, default=int(defaults.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=300, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_MIN_SEND_INTERVAL_MS, default=int(defaults.get(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=500, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_PANEL_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=100, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_PANEL_FOLLOWUP_ACK_ENABLED, default=bool(defaults.get(CONF_PANEL_FOLLOWUP_ACK_ENABLED, DEFAULT_PANEL_FOLLOWUP_ACK_ENABLED))): selector.BooleanSelector(),
-            vol.Optional(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, default=int(defaults.get(CONF_PANEL_FOLLOWUP_ACK_DELAY_MS, DEFAULT_PANEL_FOLLOWUP_ACK_DELAY_MS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=250, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_QUIET_MODE_ENABLED, default=bool(defaults.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED))): selector.BooleanSelector(),
-            vol.Optional(CONF_PERIODIC_SESSION_REFRESH_ENABLED, default=bool(defaults.get(CONF_PERIODIC_SESSION_REFRESH_ENABLED, DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED))): selector.BooleanSelector(),
-            vol.Optional(CONF_PERIODIC_SESSION_REFRESH_HOURS, default=int(defaults.get(CONF_PERIODIC_SESSION_REFRESH_HOURS, DEFAULT_PERIODIC_SESSION_REFRESH_HOURS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=168, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_DOOR_STATUS_MODE, default=str(defaults.get(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
-            vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(defaults.get(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=64, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Required(CONF_POLL_INTERVAL, default=int(defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=1, max=3600, mode=selector.NumberSelectorMode.BOX)
-            ),
-            vol.Optional(CONF_RUNTIME_POLL_INPUTS, default=bool(defaults.get(CONF_RUNTIME_POLL_INPUTS, DEFAULT_RUNTIME_POLL_INPUTS))): selector.BooleanSelector(),
-            vol.Optional(CONF_RUNTIME_POLL_AREAS, default=bool(defaults.get(CONF_RUNTIME_POLL_AREAS, DEFAULT_RUNTIME_POLL_AREAS))): selector.BooleanSelector(),
-            vol.Optional(CONF_RUNTIME_POLL_RELAYS, default=bool(defaults.get(CONF_RUNTIME_POLL_RELAYS, DEFAULT_RUNTIME_POLL_RELAYS))): selector.BooleanSelector(),
-            vol.Optional(CONF_RUNTIME_POLL_DOORS, default=bool(defaults.get(CONF_RUNTIME_POLL_DOORS, DEFAULT_RUNTIME_POLL_DOORS))): selector.BooleanSelector(),
-            vol.Optional(CONF_RUNTIME_POLL_RAS, default=bool(defaults.get(CONF_RUNTIME_POLL_RAS, DEFAULT_RUNTIME_POLL_RAS))): selector.BooleanSelector(),
-        }
+
+def _num(minimum, maximum, step=1, unit=None):
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=minimum, max=maximum, step=step,
+            mode=selector.NumberSelectorMode.BOX,
+            unit_of_measurement=unit,
+        )
     )
+
+
+def _text(password: bool = False):
+    return selector.TextSelector(
+        selector.TextSelectorConfig(
+            type=selector.TextSelectorType.PASSWORD if password else selector.TextSelectorType.TEXT
+        )
+    )
+
+
+def _schema(defaults: dict) -> vol.Schema:
+    d = _normalized_defaults(defaults)
+    g = d.get
+
+    connection = {
+        vol.Required(CONF_MODE, default=g(CONF_MODE, MODE_CTPLUS)): MODE_SELECTOR,
+        vol.Required(CONF_HOST, default=g(CONF_HOST, "")): _text(),
+        vol.Required(CONF_TRANSPORT, default=g(CONF_TRANSPORT, TRANSPORT_UDP)): TRANSPORT_SELECTOR,
+        vol.Required(CONF_SEND_PORT, default=int(g(CONF_SEND_PORT, DEFAULT_SEND_PORT))): _num(1, 65535),
+        vol.Required(CONF_LISTEN_PORT, default=int(g(CONF_LISTEN_PORT, DEFAULT_LISTEN_PORT))): _num(1, 65535),
+        vol.Optional(CONF_BIND_HOST, default=g(CONF_BIND_HOST, "0.0.0.0")): _text(),
+        vol.Optional(CONF_TCP_ROLE, default=g(CONF_TCP_ROLE, TCP_ROLE_CLIENT)): TCP_ROLE_SELECTOR,
+    }
+
+    authentication = {
+        vol.Required(CONF_AUTH_METHOD, default=g(CONF_AUTH_METHOD, DEFAULT_AUTH_METHOD)): AUTH_METHOD_SELECTOR,
+        vol.Optional(CONF_COMPUTER_PASSWORD, default=g(CONF_COMPUTER_PASSWORD, DEFAULT_COMPUTER_PASSWORD)): _text(password=True),
+        vol.Optional(CONF_AUTH_USERNAME, default=g(CONF_AUTH_USERNAME, "")): _text(),
+        vol.Optional(CONF_AUTH_PASSWORD, default=g(CONF_AUTH_PASSWORD, "")): _text(password=True),
+        vol.Optional(CONF_ENCRYPTION_TYPE, default=g(CONF_ENCRYPTION_TYPE, ENC_NONE)): ENC_SELECTOR,
+        vol.Optional(CONF_ENCRYPTION_KEY, default=g(CONF_ENCRYPTION_KEY, "")): _text(password=True),
+    }
+
+    objects = {
+        vol.Required(CONF_INPUTS_COUNT, default=int(g(CONF_INPUTS_COUNT, 0))): _num(0, 4096),
+        vol.Optional(CONF_INPUT_RANGES, default=str(g(CONF_INPUT_RANGES, ""))): _text(),
+        vol.Required(CONF_AREAS_COUNT, default=int(g(CONF_AREAS_COUNT, 0))): _num(0, 256),
+        vol.Optional(CONF_DGP_DOOR_RANGES, default=str(g(CONF_DGP_DOOR_RANGES, DEFAULT_DGP_DOOR_RANGES))): _text(),
+        vol.Optional(CONF_RAS_DOOR_RANGES, default=str(g(CONF_RAS_DOOR_RANGES, DEFAULT_RAS_DOOR_RANGES))): _text(),
+        vol.Optional(CONF_DOOR_FIRST, default=int(g(CONF_DOOR_FIRST, 1))): _num(0, 256),
+        vol.Optional(CONF_DOOR_LAST, default=int(g(CONF_DOOR_LAST, 0))): _num(0, 256),
+        vol.Optional(CONF_RELAY_RANGES, default=str(g(CONF_RELAY_RANGES, ""))): _text(),
+        vol.Optional(CONF_RELAYS_COUNT, default=int(g(CONF_RELAYS_COUNT, 0))): _num(0, 1024),
+    }
+
+    naming = {
+        vol.Optional(CONF_PANEL_EXPORT_PATH, default=str(g(CONF_PANEL_EXPORT_PATH, DEFAULT_PANEL_EXPORT_PATH))): _text(),
+        vol.Optional(CONF_PANEL_EXPORT_RENAME_AREAS, default=bool(g(CONF_PANEL_EXPORT_RENAME_AREAS, DEFAULT_PANEL_EXPORT_RENAME_AREAS))): selector.BooleanSelector(),
+        vol.Optional(CONF_PANEL_EXPORT_RENAME_INPUTS, default=bool(g(CONF_PANEL_EXPORT_RENAME_INPUTS, DEFAULT_PANEL_EXPORT_RENAME_INPUTS))): selector.BooleanSelector(),
+        vol.Optional(CONF_PANEL_EXPORT_RENAME_DOORS, default=bool(g(CONF_PANEL_EXPORT_RENAME_DOORS, DEFAULT_PANEL_EXPORT_RENAME_DOORS))): selector.BooleanSelector(),
+        vol.Optional(CONF_PANEL_EXPORT_RENAME_RELAYS, default=bool(g(CONF_PANEL_EXPORT_RENAME_RELAYS, DEFAULT_PANEL_EXPORT_RENAME_RELAYS))): selector.BooleanSelector(),
+        vol.Optional(CONF_PANEL_EXPORT_RENAME_RASES, default=bool(g(CONF_PANEL_EXPORT_RENAME_RASES, DEFAULT_PANEL_EXPORT_RENAME_RASES))): selector.BooleanSelector(),
+    }
+
+    polling = {
+        vol.Optional(CONF_POLL_INTERVAL, default=int(g(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_SECONDS))): _num(1, 86400, unit="seconds"),
+        vol.Optional(CONF_RUNTIME_POLL_INPUTS, default=bool(g(CONF_RUNTIME_POLL_INPUTS, False))): selector.BooleanSelector(),
+        vol.Optional(CONF_RUNTIME_POLL_AREAS, default=bool(g(CONF_RUNTIME_POLL_AREAS, False))): selector.BooleanSelector(),
+        vol.Optional(CONF_RUNTIME_POLL_RELAYS, default=bool(g(CONF_RUNTIME_POLL_RELAYS, False))): selector.BooleanSelector(),
+        vol.Optional(CONF_RUNTIME_POLL_DOORS, default=bool(g(CONF_RUNTIME_POLL_DOORS, False))): selector.BooleanSelector(),
+        vol.Optional(CONF_RUNTIME_POLL_RAS, default=bool(g(CONF_RUNTIME_POLL_RAS, False))): selector.BooleanSelector(),
+    }
+
+    door_polling = {
+        vol.Optional(CONF_DOOR_STATUS_MODE, default=str(g(CONF_DOOR_STATUS_MODE, DEFAULT_DOOR_STATUS_MODE))): DOOR_STATUS_MODE_SELECTOR,
+        vol.Optional(CONF_DOOR_STATUS_PER_CYCLE, default=int(g(CONF_DOOR_STATUS_PER_CYCLE, DEFAULT_DOOR_STATUS_PER_CYCLE))): _num(1, 64),
+    }
+
+    user_sync = {
+        vol.Optional(CONF_USER_SYNC_ENABLED, default=bool(g(CONF_USER_SYNC_ENABLED, DEFAULT_USER_SYNC_ENABLED))): selector.BooleanSelector(),
+        vol.Optional(CONF_USER_SYNC_ON_STARTUP, default=bool(g(CONF_USER_SYNC_ON_STARTUP, DEFAULT_USER_SYNC_ON_STARTUP))): selector.BooleanSelector(),
+        vol.Optional(CONF_USER_SYNC_PERIODIC_ENABLED, default=bool(g(CONF_USER_SYNC_PERIODIC_ENABLED, DEFAULT_USER_SYNC_PERIODIC_ENABLED))): selector.BooleanSelector(),
+        vol.Optional(CONF_USER_SYNC_INTERVAL_HOURS, default=int(g(CONF_USER_SYNC_INTERVAL_HOURS, DEFAULT_USER_SYNC_INTERVAL_HOURS))): _num(1, 720, unit="hours"),
+    }
+
+    advanced = {
+        vol.Optional(CONF_SEND_ACKS, default=bool(g(CONF_SEND_ACKS, True))): selector.BooleanSelector(),
+        vol.Optional(CONF_SEND_HEARTBEATS, default=bool(g(CONF_SEND_HEARTBEATS, True))): selector.BooleanSelector(),
+        vol.Optional(CONF_HEARTBEAT_INTERVAL, default=int(g(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL_SECONDS))): _num(1, 3600, unit="seconds"),
+        vol.Optional(CONF_MIN_SEND_INTERVAL_MS, default=int(g(CONF_MIN_SEND_INTERVAL_MS, DEFAULT_MIN_SEND_INTERVAL_MS))): _num(0, 5000, unit="ms"),
+        vol.Optional(CONF_PANEL_ACK_DELAY_MS, default=float(g(CONF_PANEL_ACK_DELAY_MS, DEFAULT_PANEL_ACK_DELAY_MS))): _num(0, 1000, step=1, unit="ms"),
+        vol.Optional(CONF_PERIODIC_SESSION_REFRESH_ENABLED, default=bool(g(CONF_PERIODIC_SESSION_REFRESH_ENABLED, DEFAULT_PERIODIC_SESSION_REFRESH_ENABLED))): selector.BooleanSelector(),
+        vol.Optional(CONF_PERIODIC_SESSION_REFRESH_HOURS, default=float(g(CONF_PERIODIC_SESSION_REFRESH_HOURS, DEFAULT_PERIODIC_SESSION_REFRESH_HOURS))): _num(1, 168, step=1, unit="hours"),
+        vol.Optional(CONF_QUIET_MODE_ENABLED, default=bool(g(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED))): selector.BooleanSelector(),
+        vol.Optional(CONF_INPUT_MAPPING_MODE, default=str(g(CONF_INPUT_MAPPING_MODE, DEFAULT_INPUT_MAPPING_MODE))): INPUT_MAPPING_MODE_SELECTOR,
+    }
+
+    return vol.Schema({
+        vol.Required(SECTION_CONNECTION): section(vol.Schema(connection), {"collapsed": False}),
+        vol.Required(SECTION_AUTH): section(vol.Schema(authentication), {"collapsed": True}),
+        vol.Required(SECTION_OBJECTS): section(vol.Schema(objects), {"collapsed": True}),
+        vol.Required(SECTION_NAMING): section(vol.Schema(naming), {"collapsed": True}),
+        vol.Required(SECTION_POLLING): section(vol.Schema(polling), {"collapsed": True}),
+        vol.Required(SECTION_DOOR_POLLING): section(vol.Schema(door_polling), {"collapsed": True}),
+        vol.Required(SECTION_USER_SYNC): section(vol.Schema(user_sync), {"collapsed": True}),
+        vol.Required(SECTION_ADVANCED): section(vol.Schema(advanced), {"collapsed": True}),
+    })
+
+
+def _validate(cfg: dict) -> dict:
+    """Check credential and key formats before they reach the panel.
+
+    The panel does not report a bad credential -- it simply stops responding --
+    so catching what we can here saves the user a silent failure.
+    """
+    errors: dict[str, str] = {}
+
+    method = cfg.get(CONF_AUTH_METHOD, DEFAULT_AUTH_METHOD)
+    if method == AUTH_METHOD_SECURITY_PASSWORD:
+        pw = str(cfg.get(CONF_COMPUTER_PASSWORD, "") or "")
+        if not pw.isdigit() or len(pw) != 10:
+            errors[CONF_COMPUTER_PASSWORD] = "security_password_format"
+    else:
+        if not str(cfg.get(CONF_AUTH_USERNAME, "") or "").strip():
+            errors[CONF_AUTH_USERNAME] = "required"
+        if len(str(cfg.get(CONF_AUTH_USERNAME, "") or "")) > 30:
+            errors[CONF_AUTH_USERNAME] = "too_long"
+        if len(str(cfg.get(CONF_AUTH_PASSWORD, "") or "")) > 16:
+            errors[CONF_AUTH_PASSWORD] = "too_long"
+
+    enc = cfg.get(CONF_ENCRYPTION_TYPE, ENC_NONE)
+    key = str(cfg.get(CONF_ENCRYPTION_KEY, "") or "")
+    if enc != ENC_NONE:
+        limit = 32 if enc == ENC_AES_CBC_256 else 16
+        if not key:
+            errors[CONF_ENCRYPTION_KEY] = "required"
+        elif len(key) > limit:
+            errors[CONF_ENCRYPTION_KEY] = "key_too_long"
+        elif not key.isalnum():
+            errors[CONF_ENCRYPTION_KEY] = "key_not_alphanumeric"
+    return errors
 
 
 class TecomChallengerPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Tecom ChallengerPlus."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
+            user_input = flatten_sections(user_input)
+            errors = _validate(user_input)
             host = (user_input.get(CONF_HOST) or "").strip()
             if not host:
                 errors[CONF_HOST] = "required"
-            else:
+            if not errors:
                 # Make a deterministic unique_id based on host+ports
                 uid = f"{host}:{user_input.get(CONF_TRANSPORT)}:{user_input.get(CONF_SEND_PORT)}"
                 await self.async_set_unique_id(uid)
@@ -383,9 +454,15 @@ class TecomChallengerPlusOptionsFlow(config_entries.OptionsFlow):
         self._entry = config_entry
 
     async def async_step_init(self, user_input=None):
+        errors = {}
         if user_input is not None:
-            # Options update will trigger the entry's update_listener which reloads the integration.
-            return self.async_create_entry(title="", data=user_input)
+            user_input = flatten_sections(user_input)
+            errors = _validate(user_input)
+            if not errors:
+                # Updating options triggers the entry's update listener, which reloads.
+                return self.async_create_entry(title="", data=user_input)
 
         defaults = {**self._entry.data, **self._entry.options}
-        return self.async_show_form(step_id="init", data_schema=_schema(defaults), errors={})
+        if user_input:
+            defaults = {**defaults, **user_input}
+        return self.async_show_form(step_id="init", data_schema=_schema(defaults), errors=errors)

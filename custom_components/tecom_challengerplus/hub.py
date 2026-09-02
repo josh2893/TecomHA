@@ -41,7 +41,16 @@ from .const import (
     CONF_DOOR_LAST,
     CONF_RELAY_RANGES,
     CONF_AREAS_COUNT,
+    CONF_AUTH_METHOD,
     CONF_ENCRYPTION_TYPE,
+    CONF_ENCRYPTION_KEY,
+    CONF_AUTH_USERNAME,
+    CONF_AUTH_PASSWORD,
+    CONF_COMPUTER_PASSWORD,
+    AUTH_METHOD_CREDENTIALS,
+    DEFAULT_AUTH_METHOD,
+    DEFAULT_COMPUTER_PASSWORD,
+    LEGACY_ENCRYPTION_ALIASES,
     CONF_INPUT_RANGES,
     CONF_INPUT_MAPPING_MODE,
     INPUT_MAPPING_CTPLUS,
@@ -117,6 +126,7 @@ from .const import (
 from .exceptions import TecomNotSupported, TecomConnectionError
 from .transport import TecomTCPPrinterClient, TecomTCPPrinterServer, TecomUDPRaw, TecomTCPRaw
 from . import ctplus_protocol as proto
+from .ctplus_crypto import CtplusCipher, looks_encrypted
 from .ctplus_event_decoder import decode_ctplus_event
 from .panel_export import PanelExportNames
 
@@ -327,7 +337,29 @@ class TecomHub:
         self.doors_max = self.door_last if self.door_last > 0 else max(self.door_ids, default=0)
         self.areas_count = int(cfg.get(CONF_AREAS_COUNT, 0))
 
-        self.encryption_type = cfg.get(CONF_ENCRYPTION_TYPE, ENC_NONE)
+        # Path authentication. Builds before this reworking always sent the
+        # panel's default security password regardless of configuration, so the
+        # config entry migration pins existing entries to that value.
+        self.auth_method = str(cfg.get(CONF_AUTH_METHOD, DEFAULT_AUTH_METHOD) or DEFAULT_AUTH_METHOD)
+        self.computer_password = str(cfg.get(CONF_COMPUTER_PASSWORD, DEFAULT_COMPUTER_PASSWORD) or DEFAULT_COMPUTER_PASSWORD)
+        self.auth_username = str(cfg.get(CONF_AUTH_USERNAME, "") or "")
+        self.auth_password = str(cfg.get(CONF_AUTH_PASSWORD, "") or "")
+
+        # Path encryption. Older entries may hold the pre-rework option values.
+        raw_enc = str(cfg.get(CONF_ENCRYPTION_TYPE, ENC_NONE) or ENC_NONE)
+        self.encryption_type = LEGACY_ENCRYPTION_ALIASES.get(raw_enc, raw_enc)
+        self.encryption_key = str(cfg.get(CONF_ENCRYPTION_KEY, "") or "")
+        self._cipher = None
+        if self.encryption_type != ENC_NONE:
+            try:
+                self._cipher = CtplusCipher(self.encryption_type, self.encryption_key)
+            except Exception as err:
+                _LOGGER.error("Path encryption could not be initialised: %s", err)
+                raise
+        # Consecutive datagrams that failed to decrypt. The panel gives no
+        # feedback on a wrong key, so a sustained run is the only signal.
+        self._decrypt_failures: int = 0
+        self._decrypt_warned: bool = False
 
         self.state = TecomState()
         self._area_override_until: dict[int, float] = {}
@@ -785,11 +817,6 @@ class TecomHub:
 
     async def async_start(self) -> None:
         """Start transport and register services."""
-        if self.mode == MODE_CTPLUS and self.encryption_type != ENC_NONE:
-            raise TecomNotSupported(
-                "Encryption is configured but not implemented yet; set encryption to None"
-            )
-
         await self._start_transport()
 
         if self.mode == MODE_CTPLUS:
@@ -959,6 +986,10 @@ class TecomHub:
     async def async_send_bytes(self, payload: bytes, addr=None) -> None:  # noqa: ANN001
         if not self._transport_obj:
             raise TecomConnectionError("Transport not started")
+        # Encryption wraps whole datagrams, so it is applied here rather than in
+        # frame building: everything above this point works in plaintext frames.
+        if self._cipher is not None:
+            payload = self._cipher.wrap(payload)
         if addr is not None and hasattr(self._transport_obj, 'async_sendto'):
             await self._transport_obj.async_sendto(payload, addr)
         else:
@@ -1391,14 +1422,52 @@ class TecomHub:
         for fr in frames:
             self._handle_ctplus_frame(fr)
 
+    def _decrypt_datagram(self, data: bytes) -> bytes | None:
+        """Return the plaintext datagram, or None if it could not be decrypted.
+
+        The panel gives no feedback for a wrong encryption key -- traffic simply
+        arrives undecryptable -- so a sustained run of failures is the only
+        signal available, and is logged once rather than per datagram.
+        """
+        if self._cipher is None:
+            if looks_encrypted(data) and not self._decrypt_warned:
+                self._decrypt_warned = True
+                _LOGGER.error(
+                    "Traffic from the panel looks encrypted but no encryption is configured. "
+                    "Set the encryption type and key to match the panel's comms path."
+                )
+            return data
+
+        plain = self._cipher.unwrap(data)
+        if plain is None:
+            self._decrypt_failures += 1
+            if self._decrypt_failures >= 3 and not self._decrypt_warned:
+                self._decrypt_warned = True
+                _LOGGER.error(
+                    "Unable to decrypt traffic from the panel. Check the encryption type "
+                    "and key match the panel's comms path exactly."
+                )
+            self._debug_append({
+                'dir': 'rx', 'peer': str(self._udp_last_peer), 'hex': '',
+                'note': f'decrypt_failed:len={len(data)}',
+            })
+            return None
+        if self._decrypt_failures:
+            self._decrypt_failures = 0
+        return plain
+
     def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
-        self._debug_append({'dir': 'rx', 'peer': str(addr), 'hex': data.hex(), 'datagram_len': len(data), 'parsed_kind': 'udp_datagram'})
         try:
             self._last_rx_monotonic = asyncio.get_running_loop().time()
         except RuntimeError:
             self._last_rx_monotonic = time.monotonic()
         if addr is not None:
             self._udp_last_peer = addr
+
+        data = self._decrypt_datagram(data)
+        if data is None:
+            return
+        self._debug_append({'dir': 'rx', 'peer': str(addr), 'hex': data.hex(), 'datagram_len': len(data), 'parsed_kind': 'udp_datagram'})
         # UDP datagrams can contain multiple CTPlus frames.
         frames, rem = self._scan_ctplus_frames(data)
         if not frames:
@@ -2445,6 +2514,17 @@ class TecomHub:
         self.state.door_secure.clear()
         self.state.door_lock.clear()
 
+    def _build_auth_command(self) -> bytes:
+        """Path authentication frame for the configured method.
+
+        The panel's Authentication type must match: selecting path credentials
+        here while the panel expects a security password (or the reverse) makes
+        the panel stop responding without reporting anything.
+        """
+        if self.auth_method == AUTH_METHOD_CREDENTIALS:
+            return proto.cmd_session_auth_credentials(self.auth_username, self.auth_password)
+        return proto.cmd_session_auth_security_password(self.computer_password)
+
     async def async_reinitialize_session(self, log_errors: bool = True) -> None:
         if self.mode != MODE_CTPLUS:
             raise TecomNotSupported("Session reinitialisation requires CTPlus mode")
@@ -2454,7 +2534,7 @@ class TecomHub:
         try:
             await self._send_command(proto.cmd_session_hello(), bypass_quiet=True)
             await asyncio.sleep(max(0.25, self._min_send_interval * 2.5))
-            await self._send_command(proto.cmd_session_params(), bypass_quiet=True)
+            await self._send_command(self._build_auth_command(), bypass_quiet=True)
             await asyncio.sleep(max(0.25, self._min_send_interval * 2.5))
             if getattr(self, 'dgp_door_ids', None):
                 await self._send_command(proto.cmd_door_status_init(), bypass_quiet=True)

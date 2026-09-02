@@ -211,6 +211,57 @@ Force arm (`0x06`) arms regardless of unsealed inputs. Plain arm (`0x09`) valida
 - `user` at bytes 10–11 applies **only** to access codes `0x92`/`0x9D`. Other codes reuse those bytes.
 - Area-scoped codes (`0x0B`, `0x0C`, `0x6C`) report the area; object is zero.
 
+### Path authentication
+
+The `0x01` command carries a method byte followed by credentials. The panel's
+Authentication type must match, and a mismatch is silent -- see below.
+
+```
+Security password   01 06 0B <5 bytes>
+                             packed BCD, digits swapped within each byte,
+                             so "1234567890" is 21 43 65 87 09
+
+Path credentials    01 31 0A 1E <username, 30 bytes> 10 <password, 16 bytes>
+                             ASCII, null padded to the field widths
+```
+
+The security password is 10 digits and defaults to `0000000000` on the panel.
+That default cannot be used when the client connects over DHCP.
+
+**A rejected credential produces no error.** The panel answers the session hello
+normally and then simply stops responding. Since the hello is acknowledged
+before authentication is attempted, silence after the auth frame is a reliable
+signal that the credentials were refused rather than the panel being offline.
+
+### Path encryption
+
+All three ciphers share one datagram wrapper:
+
+```
+IV          16 bytes   plaintext, prepended
+length       2 bytes   big endian, plaintext length before padding
+ciphertext   n x 16    CBC, zero padded
+trailer      4 bytes   [0x5C + len(ciphertext), 0x00, 0x00, 0x00]
+```
+
+The key is the configured text as raw ASCII, null padded to the cipher's key
+length: 16 bytes for AES 128 and TwoFish, 32 for AES 256. There is no hashing
+or derivation, so a short key leaves the remainder zeroed and is far weaker than
+the nominal key size suggests.
+
+Padding is zero bytes, not PKCS#7; the explicit length field disambiguates.
+
+Encryption wraps whole datagrams and is applied in `hub.async_send_bytes` and
+`hub._decrypt_datagram`, so everything above that layer works in plaintext
+frames. A wrong key is not reported by the panel either -- traffic simply
+arrives undecryptable, which is why repeated decrypt failures are logged once
+as a probable key mismatch.
+
+TwoFish is implemented in `twofish.py` because no maintained package provides it
+and this integration ships no runtime dependencies. It is validated against the
+published test vectors. Being pure Python it is far slower than AES, which is
+irrelevant at CTPlus frame rates but is why AES should be preferred.
+
 ### Door status word (big endian)
 
 | Bit | Meaning |
@@ -285,6 +336,7 @@ Things that have already caused bugs and are not obvious from reading:
 - **Entity restore is self-perpetuating.** A door lock entity restores from its own previous attributes; once `unknown`, it stays `unknown` across restarts until a real event. Do not rely on restore to recover state that was never known.
 - **HA's Activity feed does not read entity attributes.** It renders an event entity's `event_type` only. Anything richer needs `logbook.py`.
 - **`supported_features` gates the tiles.** Force arm renders only when `ARM_CUSTOM_BYPASS` is advertised.
+- **Config flow sections nest their data.** Home Assistant returns each section as a dictionary under the section key, but the hub reads a flat mapping and every entry created before sections existed is stored flat. `flatten_sections()` collapses them before saving; storage must stay flat.
 - **Never add an entity where an attribute will do.** A per-input alarm entity was added in one release and removed in the next after it doubled a user's entity list.
 
 ---
@@ -316,6 +368,13 @@ A changelog entry should record what changed, **the evidence it rests on**, and 
 4. Add a `## Version X.Y.Z` section to `CHANGELOG.md`.
 5. Commit, tag `vX.Y.Z`, push with tags.
 6. `.github/workflows/release.yml` verifies the tag matches the manifest, extracts the changelog section, builds the archive and publishes the release.
+
+When a change alters what is sent to the panel based on stored configuration,
+consider whether existing entries were relying on the old behaviour. Path
+authentication is the worked example: the computer password field was ignored
+for years, so every working install is using the panel default whatever the
+field contains. The migration pins them to that value rather than trusting what
+is stored, because trusting it would break them.
 
 Version numbers are cheap but should not be invented casually. A run of releases was once created in a single session without being published, leaving gaps that had to be unwound. Prefer one release per coherent set of changes.
 

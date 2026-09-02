@@ -18,11 +18,38 @@ TRANSPORT_TCP = "tcp"
 TCP_ROLE_CLIENT = "client"
 TCP_ROLE_SERVER = "server"
 
-# Encryption types (Path Encryption Settings)
+# Path encryption types, matching the panel's Comm path IP/Encryption settings.
+# Key length limits are the panel's own: 16 characters for the 128-bit ciphers
+# and 32 for AES 256, which is exactly the padded key size.
 ENC_NONE = "none"
-ENC_TWOFISH = "twofish"   # management software option per docs
-ENC_AES128 = "aes128"     # IP receiver option per docs
-ENC_AES256 = "aes256"     # IP receiver option per docs
+ENC_TWOFISH_128 = "twofish_128"
+ENC_AES_CBC_128 = "aes_cbc_128"
+ENC_AES_CBC_256 = "aes_cbc_256"
+
+# Older option values, kept so existing config entries still resolve.
+ENC_TWOFISH = ENC_TWOFISH_128
+ENC_AES128 = ENC_AES_CBC_128
+ENC_AES256 = ENC_AES_CBC_256
+
+ENCRYPTION_TYPES = (ENC_NONE, ENC_TWOFISH_128, ENC_AES_CBC_128, ENC_AES_CBC_256)
+
+# Legacy values seen in config entries created before the encryption rework.
+LEGACY_ENCRYPTION_ALIASES = {
+    "twofish": ENC_TWOFISH_128,
+    "aes128": ENC_AES_CBC_128,
+    "aes256": ENC_AES_CBC_256,
+}
+
+# Path authentication method, matching the panel's Authentication type.
+AUTH_METHOD_SECURITY_PASSWORD = "security_password"
+AUTH_METHOD_CREDENTIALS = "path_credentials"
+AUTH_METHODS = (AUTH_METHOD_SECURITY_PASSWORD, AUTH_METHOD_CREDENTIALS)
+DEFAULT_AUTH_METHOD = AUTH_METHOD_SECURITY_PASSWORD
+
+# The panel's documented default security password. Builds before the
+# authentication rework always sent this regardless of configuration, so it is
+# what every working installation is connecting with.
+DEFAULT_COMPUTER_PASSWORD = "0000000000"
 
 # Config keys
 CONF_MODE = "mode"
@@ -38,6 +65,7 @@ CONF_COMPUTER_PASSWORD = "computer_password"
 CONF_AUTH_USERNAME = "auth_username"
 CONF_AUTH_PASSWORD = "auth_password"
 
+CONF_AUTH_METHOD = "auth_method"
 CONF_ENCRYPTION_TYPE = "encryption_type"
 CONF_ENCRYPTION_KEY = "encryption_key"
 

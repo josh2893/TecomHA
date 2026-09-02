@@ -109,6 +109,40 @@ If a category is filtered out, Home Assistant can still poll status but will mis
 
 ---
 
+## Authentication and encryption
+
+The integration supports both authentication methods the panel offers, and all
+three encryption ciphers. These must match the panel's comms path exactly — the
+panel does not report a rejected credential or a wrong key, it simply stops
+responding, so a mismatch looks like the panel being offline.
+
+### Authentication
+
+| Method | Notes |
+|---|---|
+| Security / computer password | The 10 digit password from the comms path. Panel default is `0000000000`, which cannot be used if Home Assistant connects over DHCP. |
+| Path user name and password | Supported by ChallengerPlus, Discovery, NACs and Challenger from firmware V10-06.19251. Allows longer passwords and logs activity against the path user name. |
+
+The **Authentication type** on the panel's path must match the method selected
+in Home Assistant.
+
+### Encryption
+
+| Panel setting | Key length |
+|---|---|
+| AES CBC (128 bit) | up to 16 alphanumeric characters |
+| AES CBC (256 bit) | up to 32 alphanumeric characters |
+| TwoFish (128 bit) | up to 16 alphanumeric characters |
+
+The key must match the panel exactly. The panel uses the key text directly, so a
+longer mixed key is meaningfully stronger than a short numeric one at the same
+setting.
+
+AES is recommended where the panel allows a choice. TwoFish is supported for
+panels already configured for it, but is implemented in Python and is slower.
+
+---
+
 ## Home Assistant configuration
 
 Options include host, transport, bind host, send/listen ports, poll interval, and the counts and ranges for inputs, doors, relays, and areas.
@@ -349,7 +383,6 @@ Things worth knowing if you want to work on this:
 
 - Door modelling is still evolving
 - Panel object names are not pulled from the panel directly (use `export.panel` import)
-- Encryption is not implemented for CTPlus mode
 - Some behaviour varies by panel programming and site-specific door logic
 
 ---

@@ -497,9 +497,69 @@ def cmd_session_hello() -> bytes:
     """Observed CTPlus startup command: 25 01 92."""
     return b"\x25\x01\x92"
 
+# Path authentication. The 0x01 command carries a method byte followed by the
+# credentials for that method. Both forms were confirmed against captures of the
+# official software; a wrong credential is not rejected with an error, the panel
+# simply stops responding after the session hello.
+AUTH_SECURITY_PASSWORD = 0x0B
+AUTH_USERNAME_PASSWORD = 0x0A
+
+SECURITY_PASSWORD_DIGITS = 10   # panel documents a 10 digit security code
+AUTH_USERNAME_FIELD = 30        # field widths taken from the captured frame
+AUTH_PASSWORD_FIELD = 16
+
+DEFAULT_SECURITY_PASSWORD = "0000000000"
+
+
+def encode_security_password(password: str) -> bytes:
+    """Pack a 10 digit security password into 5 bytes.
+
+    Packed BCD with the digits swapped within each byte: the first digit goes
+    in the low nibble. "1234567890" becomes 21 43 65 87 09.
+    """
+    digits = (password or "").strip()
+    if not digits.isdigit() or len(digits) != SECURITY_PASSWORD_DIGITS:
+        raise ValueError(f"Security password must be exactly {SECURITY_PASSWORD_DIGITS} digits")
+    out = bytearray()
+    for i in range(0, SECURITY_PASSWORD_DIGITS, 2):
+        out.append((int(digits[i + 1]) << 4) | int(digits[i]))
+    return bytes(out)
+
+
+def _fixed_field(text: str, width: int) -> bytes:
+    raw = (text or "").encode("ascii", errors="strict")
+    if len(raw) > width:
+        raise ValueError(f"Value too long: maximum {width} characters")
+    return raw.ljust(width, b"\x00")
+
+
+def cmd_session_auth_security_password(password: str = DEFAULT_SECURITY_PASSWORD) -> bytes:
+    """Authenticate with the path security / computer password."""
+    body = bytes([AUTH_SECURITY_PASSWORD]) + encode_security_password(password)
+    return bytes([0x01, len(body)]) + body
+
+
+def cmd_session_auth_credentials(username: str, password: str) -> bytes:
+    """Authenticate with a path user name and password.
+
+    Supported by ChallengerPlus, Discovery, NACs and Challenger from firmware
+    V10-06.19251. The panel must have Path authentication selected for the path.
+    """
+    body = (
+        bytes([AUTH_USERNAME_PASSWORD, AUTH_USERNAME_FIELD])
+        + _fixed_field(username, AUTH_USERNAME_FIELD)
+        + bytes([AUTH_PASSWORD_FIELD])
+        + _fixed_field(password, AUTH_PASSWORD_FIELD)
+    )
+    return bytes([0x01, len(body)]) + body
+
+
 def cmd_session_params() -> bytes:
-    """Observed CTPlus startup command: 01 06 0B 00 00 00 00 00."""
-    return b"\x01\x06\x0B\x00\x00\x00\x00\x00"
+    """Backwards-compatible alias: security password auth with the panel default.
+
+    Retained so existing callers keep working; prefer the explicit builders.
+    """
+    return cmd_session_auth_security_password(DEFAULT_SECURITY_PASSWORD)
 
 
 # -------------------------
