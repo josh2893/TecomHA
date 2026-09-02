@@ -13,14 +13,10 @@ silently, and the failure looks like the panel being offline.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"))
-
-from tecom_challengerplus import const  # noqa: E402
+from tecom_cp import const  # noqa: E402  (see conftest.py)
 
 
 def migrate(data: dict, options: dict) -> tuple[dict, dict]:
@@ -99,7 +95,7 @@ def test_unrelated_settings_survive_migration():
 
 def test_migrated_password_produces_the_previously_hardcoded_frame():
     """The whole point: the frame on the wire must not change."""
-    from tecom_challengerplus import ctplus_protocol as proto
+    from tecom_cp import ctplus_protocol as proto
 
     cfg = merged(*migrate({"host": "x", const.CONF_COMPUTER_PASSWORD: "9999999999"}, {}))
     frame = proto.cmd_session_auth_security_password(cfg[const.CONF_COMPUTER_PASSWORD])

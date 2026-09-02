@@ -10,3 +10,7 @@ tecom_challengerplus_debug_*.json
 baseline.json
 dumps/
 captures/
+
+# pytest bytecode caches
+tests/__pycache__/
+tools/__pycache__/

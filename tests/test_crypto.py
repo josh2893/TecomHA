@@ -8,18 +8,14 @@ the field.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
 import pytest
 
-# Imported as a package so the modules' relative imports resolve the same way
-# they do inside Home Assistant.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"))
-
-from tecom_challengerplus import ctplus_crypto as crypto  # noqa: E402
-from tecom_challengerplus import ctplus_protocol as proto  # noqa: E402
-from tecom_challengerplus.twofish import Twofish  # noqa: E402
+# conftest.py registers the integration directory as a stand-in package, so
+# these import without pulling in Home Assistant.
+from tecom_cp import ctplus_crypto as crypto  # noqa: E402
+from tecom_cp import ctplus_protocol as proto  # noqa: E402
+from tecom_cp.twofish import Twofish  # noqa: E402
 
 
 # --------------------------------------------------------------------------

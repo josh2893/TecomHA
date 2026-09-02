@@ -9,14 +9,10 @@ Run with:  python3 -m pytest tests/ -q
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"))
-
-from tecom_challengerplus import ctplus_protocol as proto  # noqa: E402
+from tecom_cp import ctplus_protocol as proto  # noqa: E402  (see conftest.py)
 
 
 # --------------------------------------------------------------------------
