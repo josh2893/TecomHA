@@ -50,7 +50,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install tooling
-        run: pip install pytest pyyaml
+        # Declared in one place so CI and local development stay in step.
+        run: pip install -r requirements-test.txt
 
       - name: Ground-truth protocol tests
         run: python3 -m pytest tests/ -q

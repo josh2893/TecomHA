@@ -37,6 +37,21 @@ Requirements for tooling only: `pytest`, `pyyaml`. The integration itself has no
 
 **Before a release, all of these must pass and the results reported.** Do not claim validation was performed without running it.
 
+Run them in an environment matching CI, not a convenient one. Test dependencies
+are declared in `requirements-test.txt`; a development machine with extra
+packages installed will pass things CI fails. The workflow has no Home Assistant
+and only what that file lists.
+
+```bash
+python3 -m venv /tmp/civenv
+/tmp/civenv/bin/pip install -r requirements-test.txt
+/tmp/civenv/bin/python -m pytest tests/ -q
+```
+
+Two CI failures have been caused by validating in a more forgiving environment
+than the one that matters: once by having Home Assistant importable, once by
+having `cryptography` installed.
+
 ---
 
 ## 3. The rule that matters most

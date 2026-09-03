@@ -1,0 +1,8 @@
+# Everything the test suite and tooling need.
+#
+# The integration itself declares no requirements in manifest.json: Home
+# Assistant already ships cryptography, and Twofish is implemented in-tree
+# precisely so no dependency is added. These are for CI and local development.
+pytest>=8.0
+pyyaml>=6.0
+cryptography>=42.0

@@ -58,10 +58,23 @@ def derive_key(key_text: str, enc_type: str) -> bytes:
 
 
 class _AesCbc:
-    """AES-CBC via the cryptography package, which Home Assistant already ships."""
+    """AES-CBC via the cryptography package.
+
+    Home Assistant ships cryptography, so this adds no requirement to
+    manifest.json. It is imported lazily and with a clear failure message all
+    the same: a bare ImportError from inside a constructor tells a user nothing
+    about what to do, and Twofish still works without it.
+    """
 
     def __init__(self, key: bytes) -> None:
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        try:
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        except ImportError as err:  # pragma: no cover - depends on the environment
+            raise RuntimeError(
+                "AES path encryption requires the 'cryptography' package, which "
+                "Home Assistant normally provides. Install it, or select TwoFish "
+                "on the panel's comms path, which needs no extra packages."
+            ) from err
 
         self._Cipher = Cipher
         self._algorithms = algorithms
