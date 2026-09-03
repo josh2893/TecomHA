@@ -92,9 +92,33 @@ for screen, path in (("setup wizard", ("config", "step", "user")),
     node = translations
     for part in path:
         node = node.get(part, {}) if isinstance(node, dict) else {}
+    # Labels may sit at the top level or inside a section, depending on where
+    # the field appears in the schema.
     labelled = set(node.get("data", {}))
+    for sec in node.get("sections", {}).values():
+        labelled |= set(sec.get("data", {}))
     gap = sorted(used - labelled)
     check(f"{screen}: all fields labelled", not gap, str(gap))
+
+# Fields inside a section must be labelled inside that section, not at the top
+# level, or the frontend shows raw keys.
+schema_src = cf[cf.index("def _schema(defaults: dict)"):cf.index("def _validate(")]
+section_fields = {}
+for _name in re.findall(r"\n    ([a-z_]+) = \{", schema_src):
+    _block = re.search(rf"\n    {_name} = \{{(.*?)\n    \}}", schema_src, re.S)
+    if _block:
+        section_fields[_name] = [conf_map[k] for k in re.findall(r"vol\.\w+\(CONF_([A-Z_0-9]+)", _block.group(1)) if k in conf_map]
+for screen, path in (("setup wizard", ("config", "step", "user")),
+                     ("options screen", ("options", "step", "init"))):
+    node = translations
+    for part in path:
+        node = node.get(part, {}) if isinstance(node, dict) else {}
+    secs = node.get("sections", {})
+    gaps = []
+    for _name, _fields in section_fields.items():
+        labelled = set(secs.get(_name, {}).get("data", {}))
+        gaps += [f"{_name}.{f}" for f in _fields if f not in labelled]
+    check(f"{screen}: section fields labelled in their section", not gaps, str(gaps[:5]))
 
 print("\nPrivacy")
 # Debug dumps and captures come from a live site; nothing identifying should

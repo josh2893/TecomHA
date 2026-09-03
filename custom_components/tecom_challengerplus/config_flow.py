@@ -281,13 +281,17 @@ def flatten_sections(user_input: dict) -> dict:
 
 
 def _num(minimum, maximum, step=1, unit=None):
-    return selector.NumberSelector(
-        selector.NumberSelectorConfig(
-            min=minimum, max=maximum, step=step,
-            mode=selector.NumberSelectorMode.BOX,
-            unit_of_measurement=unit,
-        )
-    )
+    # unit_of_measurement is validated as a string, so it must be omitted
+    # entirely rather than passed as None.
+    config = {
+        "min": minimum,
+        "max": maximum,
+        "step": step,
+        "mode": selector.NumberSelectorMode.BOX,
+    }
+    if unit:
+        config["unit_of_measurement"] = unit
+    return selector.NumberSelector(selector.NumberSelectorConfig(**config))
 
 
 def _text(password: bool = False):
