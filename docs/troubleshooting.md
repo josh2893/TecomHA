@@ -20,7 +20,7 @@ data: {}
 
 With multiple panels, the action dumps all loaded hubs unless you supply an `entry_id`.
 
-Review diagnostic files before posting them publicly. They contain site/network information and traffic. User-record frames are redacted, but this is not a guarantee that all sensitive material is removed. In particular, captures or raw authentication traffic can contain credentials.
+Review diagnostic files before posting them publicly. They contain site/network information and traffic. Version 3.4.2 redacts authentication and user-record hex, including structured copies and acknowledgement references. Older dumps and packet captures can still contain credentials; the redaction does not remove general site/network information.
 
 ## Common symptoms
 
@@ -48,7 +48,11 @@ For authentication changes, check both **Security / computer password** and **En
 
 An authentication mismatch can look like a connection failure. The panel may acknowledge the hello before refusing the credentials silently. Confirm the authentication type and credentials at both ends. If encrypted, also check the exact cipher and key.
 
-Encryption is supported on current releases; simply having encryption enabled is not itself a fault.
+If encryption stops the connection on 3.4.0 or 3.4.1, update to **3.4.2 or later**. Those versions added four incorrect bytes to encrypted datagrams, rejected genuine replies and sent immediate acknowledgements without encryption. The fix applies to both authentication methods and all three ciphers over UDP. See the [3.4.2 changelog](../CHANGELOG.md#version-342).
+
+Take a fresh dump with encryption enabled while the failure is occurring. Its `config` section reports `auth_method`, `encryption_type` and consecutive `decrypt_failures`, without the passwords or key. A repeated `decrypt_failed` note or a nonzero failure count means the receiver could not recover valid frames; check the selected cipher/key and packet integrity. A zero count by itself does not prove a connection, because the panel may have sent nothing.
+
+Recent-frame hex is recorded before transmission encryption or after receive decryption. Seeing plaintext frames in a dump does not establish that encryption was disabled on the wire. Use the reported cipher and, if needed, a packet capture. Encrypted TCP is not supported by this build; use a matching UDP path.
 
 ### The same event keeps repeating
 

@@ -6,13 +6,17 @@ same datagram wrapper, confirmed against captures of the official software::
     IV          16 bytes   plaintext, prepended
     length       2 bytes   big endian, plaintext length before padding
     ciphertext   n x 16    CBC mode, zero padded to a block boundary
-    trailer      4 bytes   [0x5C + len(ciphertext), 0x00, 0x00, 0x00]
+
+The ciphertext ends at the UDP payload boundary. The four-byte "trailer" in
+3.4.0/3.4.1 was a PCAPNG block footer accidentally included by the capture
+reader. Corrected extraction of 552 datagrams confirms this layout for both
+authentication methods and all three ciphers.
 
 The key is the configured key string as raw ASCII, null padded to the cipher's
 key length. There is no hashing or derivation step. The panel documentation
 limits the key to 16 characters for the 128-bit ciphers and 32 for AES 256,
-which is exactly the padded length, so a full-length key uses the full key
-space and a short one does not.
+which is exactly the padded length. Short keys leave more zero-filled bytes
+and provide less entropy than longer mixed keys.
 
 Padding is zero bytes rather than PKCS#7; the explicit length field makes it
 unambiguous.
@@ -36,7 +40,6 @@ _CIPHER_SPECS = {
 
 IV_LEN = 16
 BLOCK_LEN = 16
-_TRAILER_BASE = 0x5C
 
 
 def key_length_for(enc_type: str) -> int:
@@ -139,8 +142,7 @@ class CtplusCipher:
             raise ValueError("IV must be 16 bytes")
         padded = plaintext + b"\x00" * (-len(plaintext) % BLOCK_LEN)
         ciphertext = self._impl.encrypt(iv, padded)
-        trailer = bytes([(_TRAILER_BASE + len(ciphertext)) & 0xFF, 0x00, 0x00, 0x00])
-        return iv + len(plaintext).to_bytes(2, "big") + ciphertext + trailer
+        return iv + len(plaintext).to_bytes(2, "big") + ciphertext
 
     def unwrap(self, datagram: bytes) -> bytes | None:
         """Decrypt a received datagram, or None if it is not a valid wrapper.
@@ -149,18 +151,16 @@ class CtplusCipher:
         failures as a probable key mismatch, which is the only signal available
         -- the panel does not report one.
         """
-        if len(datagram) < IV_LEN + 2 + BLOCK_LEN + 4:
+        if not looks_encrypted(datagram):
             return None
         iv = datagram[:IV_LEN]
         length = int.from_bytes(datagram[IV_LEN:IV_LEN + 2], "big")
-        ciphertext = datagram[IV_LEN + 2:-4]
-        if not ciphertext or len(ciphertext) % BLOCK_LEN:
-            return None
-        if length > len(ciphertext):
-            return None
+        ciphertext = datagram[IV_LEN + 2:]
         try:
             plaintext = self._impl.decrypt(iv, ciphertext)
         except Exception:
+            return None
+        if any(plaintext[length:]):
             return None
         return plaintext[:length]
 
@@ -168,16 +168,14 @@ class CtplusCipher:
 def looks_encrypted(datagram: bytes) -> bool:
     """Heuristic: does this datagram look like the encrypted wrapper?
 
-    A plaintext CTPlus frame starts with the sync byte, so anything that does
-    not and matches the wrapper's shape is very likely encrypted. Used only to
-    give a clearer log message when a path is encrypted but the integration is
-    not configured for it.
+    Check the length field and block alignment. The IV is arbitrary and may
+    start with 0x5E, just like a plaintext frame. This does not establish that
+    decryption succeeded; the receiver must also validate the frame CRC.
     """
-    if not datagram or datagram[0] == 0x5E:
+    if len(datagram) < IV_LEN + 2 + BLOCK_LEN:
         return False
-    if len(datagram) < IV_LEN + 2 + BLOCK_LEN + 4:
+    ciphertext_len = len(datagram) - IV_LEN - 2
+    if ciphertext_len % BLOCK_LEN:
         return False
-    ciphertext_len = len(datagram) - IV_LEN - 2 - 4
-    if ciphertext_len <= 0 or ciphertext_len % BLOCK_LEN:
-        return False
-    return datagram[-4] == ((_TRAILER_BASE + ciphertext_len) & 0xFF) and datagram[-3:] == b"\x00\x00\x00"
+    length = int.from_bytes(datagram[IV_LEN:IV_LEN + 2], "big")
+    return 0 < length <= ciphertext_len < length + BLOCK_LEN

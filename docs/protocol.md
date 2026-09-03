@@ -127,9 +127,13 @@ Note that `0x00` collides with "Comms - offline" in the event table; the meaning
 
 User-facing setup is in [Panel setup](panel-setup.md#authentication). The implemented authentication methods are a packed 10-digit security password and fixed-width path user/password credentials.
 
-Encryption wraps the datagram with a 16-byte IV, an explicit plaintext length, CBC ciphertext and a four-byte trailer. The protocol uses zero padding rather than PKCS#7; the configured ASCII key is padded to the cipher's key length.
+Encrypted UDP payloads consist of a 16-byte IV, a two-byte big-endian plaintext length and CBC ciphertext through the end of the UDP payload. There is **no four-byte trailer**. The protocol uses zero padding rather than PKCS#7; the configured ASCII key is padded to 16 bytes for AES-128/TwoFish or 32 bytes for AES-256.
 
-See [ctplus_crypto.py](../custom_components/tecom_challengerplus/ctplus_crypto.py), [twofish.py](../custom_components/tecom_challengerplus/twofish.py) and the [3.4.0 release notes](../CHANGELOG.md#version-340) for details and capture-validation evidence.
+This layout was checked against 552 datagrams across 12 CTPlus captures: each cipher with both security/computer-password and path-user/password authentication. All decrypt to CRC-valid frames and re-encrypt byte-identically with their original IV. Authentication and host acknowledgement sends were also reproduced through the hub. These checks cover UDP; encrypted TCP is not implemented.
+
+Both immediate and async acknowledgements use the selected encryption. Wrong-key detection checks padding and frame CRCs, because CBC decryption can return invalid bytes without raising an error.
+
+See [ctplus_crypto.py](../custom_components/tecom_challengerplus/ctplus_crypto.py), [twofish.py](../custom_components/tecom_challengerplus/twofish.py) and the [3.4.2 release notes](../CHANGELOG.md#version-342) for details and capture-validation evidence.
 
 ## Development tools
 
@@ -139,5 +143,7 @@ The repository includes tools for decoding captured frames, inspecting debug dum
 - [replay_debug.py](../tools/replay_debug.py)
 - [validate_project.py](../tools/validate_project.py)
 - [Protocol tests](../tests/test_protocol.py) and [crypto tests](../tests/test_crypto.py)
+
+The PCAPNG reader supports Ethernet/IPv4 UDP, including VLAN tags and IPv4 options. It honours captured packet and UDP lengths, excludes capture padding/options/footers, and rejects malformed blocks or unsupported interface types. It does not reassemble IP fragments. The incorrect offsets in the older reader caused the false trailer claim corrected in 3.4.2.
 
 Protocol values should be backed by a capture of the corresponding CTPlus action. Preserve distinctions between verified observations and values inferred from tables or incomplete captures.

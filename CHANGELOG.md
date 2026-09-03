@@ -8,6 +8,91 @@ way, the notes say so.
 
 ---
 
+## Version 3.4.2
+
+### Encrypted UDP connections fixed for both authentication methods
+
+Enabling AES-128, AES-256 or TwoFish could stop communication even with the
+correct credentials and key. The shared encrypted transport is now corrected
+for **Security / computer password** and **Path user name and password**.
+
+The integration was appending four bytes to outgoing encrypted packets and
+expecting those bytes on replies. They were actually a PCAPNG capture-file
+block footer accidentally included by the analysis tool. They do not exist in
+the UDP payload. The real format is a 16-byte IV, two-byte big-endian plaintext
+length and zero-padded CBC ciphertext through the end of the datagram.
+
+The correction applies to sending and receiving. Immediate acknowledgements
+also use encryption now; the async fallback encrypts once. Previously, the
+immediate transport path bypassed encryption and could leave panel events
+unacknowledged even after other traffic was corrected.
+
+The authentication commands, raw-ASCII key padding and cipher algorithms are
+unchanged. A 10-character alphanumeric AES-256 key remains valid; it does not
+need to be exactly 32 characters.
+
+### Capture reader and regression coverage
+
+Corrected PCAPNG packet offsets and enforced captured-packet, IPv4 and UDP
+length boundaries. Capture padding, options and block footers are excluded.
+Added tests against actual UDP hello/acknowledgement payloads for all three
+ciphers, plus synthetic capture-boundary tests containing no site data.
+
+**Correction to the 3.4.0 notes:** the four-byte trailer and earlier claim that
+292 datagrams established wire compatibility were wrong. The old reader and
+crypto wrapper agreed with each other about bytes outside the actual packet.
+The original captures have now been rechecked using the corrected boundaries.
+
+### More useful, safer diagnostics
+
+- Decrypted traffic must contain CRC-valid frames. Wrong-key failures are
+  counted even when CBC decryption itself returns bytes without an error.
+- Invalid wrapper lengths and nonzero padding are rejected. Successful
+  decryption resets consecutive failures and permits a later failure warning.
+- Dumps report the authentication method, encryption type and consecutive
+  decryption-failure count, without adding passwords or keys.
+- Authentication and user-record hex is removed from raw and structured debug
+  entries, combined datagrams and acknowledgement references. User records
+  with no name are redacted too. Existing dump files are not rewritten.
+
+### Validation
+
+**552 encrypted UDP datagrams across 12 CTPlus captures** pass CRC validation
+and re-encrypt byte-identically with their original IVs. All 552 also pass the
+hub's receive decryptor. The hub reproduces the authentication command and
+host acknowledgement in every capture.
+
+| Cipher | Computer/security password | User name/password |
+| --- | ---: | ---: |
+| AES-128 | 108 datagrams, two captures | 76 datagrams, two captures |
+| AES-256 | 76 datagrams, two captures | 108 datagrams, two captures |
+| TwoFish-128 | 76 datagrams, two captures | 108 datagrams, two captures |
+
+The full suite passes **196 tests**, including the existing form, migration,
+protocol and user-name tests. Running the current crypto/transport/capture
+tests against 3.4.1 produces 59 failures and 50 passes. Structural checks pass,
+and the supplied unencrypted debug dump produces the same replay summary
+before and after: 191 frame entries, with no parse failures.
+
+Tests use the real hub and protocol code with lightweight Home Assistant
+service doubles. This is capture and automated validation, not a live Home
+Assistant/panel test. The encrypted captures are UDP; encrypted TCP is not
+implemented in this build.
+
+### Upgrading
+
+The visible form-validation fixes and all eight normal/dark branding assets
+from 3.4.1 are included. The authentication choices, grouped setup screen and
+user-name ordering option introduced in 3.4.0 are retained.
+
+Replace the integration folder and restart Home Assistant. There is no new
+config-entry migration or need to remove/re-add the integration. Settings
+saved in 3.4.0/3.4.1 are preserved. Check that the dedicated panel path and Home
+Assistant use the same authentication method, credentials, cipher and key,
+then confirm the connection and entity updates. Use UDP for encryption.
+
+---
+
 ## Version 3.4.1
 
 ### Setup and options validation is visible
@@ -58,6 +143,8 @@ Assistant 2026.3 or later; refresh the frontend if the old image remains cached.
 ---
 
 ## Version 3.4.0
+
+> **Correction in 3.4.2:** the encryption wrapper and capture-validation claims below were based on faulty PCAPNG extraction. The four-byte trailer is capture metadata, not protocol data. See [Version 3.4.2](#version-342) for the corrected implementation and validation. The following text is retained as the original release record.
 
 Path authentication and encryption now work, and the setup screen has been
 reorganised. Everything in this release was confirmed against packet captures of

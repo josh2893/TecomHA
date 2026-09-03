@@ -250,14 +250,19 @@ signal that the credentials were refused rather than the panel being offline.
 
 ### Path encryption
 
-All three ciphers share one datagram wrapper:
+All three ciphers share one UDP datagram wrapper:
 
 ```
 IV          16 bytes   plaintext, prepended
 length       2 bytes   big endian, plaintext length before padding
 ciphertext   n x 16    CBC, zero padded
-trailer      4 bytes   [0x5C + len(ciphertext), 0x00, 0x00, 0x00]
 ```
+
+The ciphertext ends at the UDP payload boundary; there is no trailer. In
+3.4.0/3.4.1 the capture reader included the PCAPNG block footer by mistake.
+Correct extraction and replay of 552 datagrams across 12 captures verifies
+all three ciphers with both security-password and path-credential authentication.
+These are UDP captures; encrypted TCP is not implemented.
 
 The key is the configured text as raw ASCII, null padded to the cipher's key
 length: 16 bytes for AES 128 and TwoFish, 32 for AES 256. There is no hashing
@@ -266,9 +271,12 @@ the nominal key size suggests.
 
 Padding is zero bytes, not PKCS#7; the explicit length field disambiguates.
 
-Encryption wraps whole datagrams and is applied in `hub.async_send_bytes` and
-`hub._decrypt_datagram`, so everything above that layer works in plaintext
-frames. A wrong key is not reported by the panel either -- traffic simply
+Encryption wraps whole datagrams. Both `hub.async_send_bytes` and the immediate
+ACK path call `hub._wrap_transport_payload`; async ACK fallback passes the
+plaintext to `async_send_bytes` so it is encrypted once. Receive decryption in
+`hub._decrypt_datagram` validates padding and frame CRCs, including wrong-key
+cases where CBC itself returns bytes without raising. Everything above the
+transport boundary works in plaintext frames. A wrong key is not reported by the panel either -- traffic simply
 arrives undecryptable, which is why repeated decrypt failures are logged once
 as a probable key mismatch.
 
@@ -302,7 +310,7 @@ This repository is public, and debug dumps get attached to issue reports.
 
 - **Never commit site data**: user names, card numbers, door or area names, panel IP addresses. Use `J. Smith`, `Front Entry`, `192.168.1.50`.
 - **User records contain card and PIN material.** `parse_user_records()` reads only bytes 0–1 (number) and 19–34 (name). Do not extend it.
-- **Debug dumps redact user-record frames.** `_redact_debug_hex()` strips them from the ring buffer. Without it, any dump taken shortly after a user sync contains names and credential bytes in raw hex. If you add another frame class carrying sensitive data, redact it there too.
+- **Debug dumps redact authentication and user-record frames.** `_debug_append()` strips raw hex, structured bodies and acknowledgement copies, including combined datagrams and user records with no name. Pending host-frame diagnostics must retain the redacted values. Dump the authentication method, cipher and failure count, never passwords or encryption keys. If you add another frame class carrying sensitive data, redact it there too.
 - **Dumps carry user numbers and counts, never names.**
 - `tools/validate_project.py` scans for committed site addresses; extend its patterns rather than relying on memory.
 
@@ -346,6 +354,7 @@ Things that have already caused bugs and are not obvious from reading:
 
 - **`ctplus_eventtable_data.py` is generated.** Do not hand-edit.
 - **Event code `0x00` is context-dependent.** It is a zone alarm, but the event table lists `(0, 0)` as "Comms - offline".
+- **PCAPNG block footers are not protocol trailers.** Packet data starts at offset 28 in an Enhanced Packet Block, bounded by Captured Packet Length at offset 20. Then honour the IPv4 header and UDP length. Never scan through padding, options or the repeated Block Total Length for protocol bytes.
 - **Debug dumps double-count frames.** One entry is written for the datagram and another for the parsed frame. Two identical entries at the same timestamp are one frame, not two.
 - **There are two door-status code paths.** One handles state, one only builds debug summaries. Changing state handling means editing the first.
 - **Entity restore is self-perpetuating.** A door lock entity restores from its own previous attributes; once `unknown`, it stays `unknown` across restarts until a real event. Do not rely on restore to recover state that was never known.

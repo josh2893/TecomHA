@@ -71,7 +71,7 @@ A rejected credential may produce no explicit error: the panel can acknowledge t
 
 ## Encryption
 
-Current releases support unencrypted communication and all three of the panel's listed ciphers:
+Version 3.4.2 corrects encrypted UDP communication for both authentication methods. The available settings are:
 
 | Panel setting | Encryption key |
 | --- | --- |
@@ -80,10 +80,10 @@ Current releases support unencrypted communication and all three of the panel's 
 | AES CBC, 256 bit | Up to 32 alphanumeric characters |
 | TwoFish, 128 bit | Up to 16 alphanumeric characters |
 
-Select the same cipher and enter the exact same key at both ends. Encryption no longer needs to be disabled to use the integration.
+Select the same cipher and enter the exact same key at both ends. Use UDP for encrypted paths; encrypted TCP is not supported. Both security/computer-password and path-user/password authentication have been verified with each cipher against CTPlus captures. A successful capture replay does not replace checking the connection from your Home Assistant installation.
 
 AES is the preferred option where the panel offers a choice. TwoFish is supported for existing configurations but uses a slower Python implementation. The panel uses key text directly, so a longer mixed key is preferable to a short numeric key.
 
 A wrong key can look like an offline panel. Check the encryption settings alongside authentication when diagnosing a silent connection.
 
-For implementation details and the evidence behind authentication/encryption support, see the [3.4.0 changelog entry](../CHANGELOG.md#version-340) and [protocol reference](protocol.md).
+For implementation details and the evidence behind authentication/encryption support, see the [3.4.2 changelog entry](../CHANGELOG.md#version-342) and [protocol reference](protocol.md).

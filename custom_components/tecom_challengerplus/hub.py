@@ -987,13 +987,16 @@ class TecomHub:
         if not self.hass.services.has_service(DOMAIN, "send_raw_hex"):
             self.hass.services.async_register(DOMAIN, "send_raw_hex", async_send_raw)
 
+    def _wrap_transport_payload(self, payload: bytes) -> bytes:
+        """Apply path encryption to commands and immediate acknowledgements."""
+        return self._cipher.wrap(payload) if self._cipher is not None else payload
+
     async def async_send_bytes(self, payload: bytes, addr=None) -> None:  # noqa: ANN001
         if not self._transport_obj:
             raise TecomConnectionError("Transport not started")
         # Encryption wraps whole datagrams, so it is applied here rather than in
         # frame building: everything above this point works in plaintext frames.
-        if self._cipher is not None:
-            payload = self._cipher.wrap(payload)
+        payload = self._wrap_transport_payload(payload)
         if addr is not None and hasattr(self._transport_obj, 'async_sendto'):
             await self._transport_obj.async_sendto(payload, addr)
         else:
@@ -1434,7 +1437,7 @@ class TecomHub:
         signal available, and is logged once rather than per datagram.
         """
         if self._cipher is None:
-            if looks_encrypted(data) and not self._decrypt_warned:
+            if looks_encrypted(data) and proto.parse_frame(data) is None and not self._decrypt_warned:
                 self._decrypt_warned = True
                 _LOGGER.error(
                     "Traffic from the panel looks encrypted but no encryption is configured. "
@@ -1443,6 +1446,13 @@ class TecomHub:
             return data
 
         plain = self._cipher.unwrap(data)
+        if plain is not None and proto.parse_frame(plain) is None:
+            # CBC can decrypt with the wrong key without raising an error,
+            # especially when no padding is needed. Require CRC-valid frames
+            # before resetting the failure counter or dispatching panel data.
+            frames, remainder = self._scan_ctplus_frames(plain)
+            if not frames or remainder:
+                plain = None
         if plain is None:
             self._decrypt_failures += 1
             if self._decrypt_failures >= 3 and not self._decrypt_warned:
@@ -1458,6 +1468,7 @@ class TecomHub:
             return None
         if self._decrypt_failures:
             self._decrypt_failures = 0
+            self._decrypt_warned = False
         return plain
 
     def _on_ctplus_datagram(self, data: bytes, addr=None) -> None:  # noqa: ANN001
@@ -1504,13 +1515,17 @@ class TecomHub:
         if rem and rem != data:
             self.hass.bus.async_fire(f"{DOMAIN}_raw", {"hex": rem.hex(), "len": len(rem)})
 
-    # User-database responses carry names and credential material. Debug dumps
-    # get attached to issue reports, so the raw hex of these frames is replaced
-    # with a placeholder before it reaches the ring buffer. Keeping names out of
-    # the structured state is not enough on its own: the frame log would still
-    # contain them verbatim for any dump taken shortly after a user sync.
+    # Authentication and user-database frames carry credential material. Strip
+    # both raw frames and structured copies before they reach the debug buffer.
     @staticmethod
-    def _redact_debug_hex(hexs: str) -> str | None:
+    def _sensitive_debug_body(body: bytes) -> str | None:
+        if body.startswith((b'\x01\x06\x0b', b'\x01\x31\x0a\x1e')):
+            return f"<redacted authentication, {len(body)} bytes>"
+        if len(body) >= 4 and body[0] == 0x7D and body[2] == 0x1D:
+            return f"<redacted user records, {len(body)} bytes>"
+        return None
+
+    def _redact_debug_hex(self, hexs: str) -> str | None:
         if not hexs or len(hexs) < 14:
             return None
         try:
@@ -1518,16 +1533,26 @@ class TecomHub:
         except ValueError:
             return None
         fr = proto.parse_frame(raw)
-        if fr is None or not proto.parse_user_records(fr.body):
-            return None
-        return f"<redacted user records, {len(fr.body)} bytes>"
+        frames = [fr] if fr else self._scan_ctplus_frames(raw)[0]
+        for fr in frames:
+            redacted = self._sensitive_debug_body(fr.body)
+            if redacted:
+                return redacted
+        return None
 
     def _debug_append(self, entry: dict) -> None:
-        redacted = self._redact_debug_hex(entry.get('hex') or '')
-        if redacted is not None:
-            entry = dict(entry)
-            entry['hex'] = ''
-            entry['redacted'] = redacted
+        for key in ('hex', 'acks_hex', 'body_hex', 'ack_for_body_hex'):
+            hexs = entry.get(key) or ''
+            if key in ('body_hex', 'ack_for_body_hex'):
+                try:
+                    redacted = self._sensitive_debug_body(bytes.fromhex(hexs))
+                except ValueError:
+                    redacted = None
+            else:
+                redacted = self._redact_debug_hex(hexs)
+            if redacted:
+                entry[key] = ''
+                entry['redacted'] = redacted
         entry.setdefault('ts', time.time())
         try:
             entry.setdefault('monotonic', asyncio.get_running_loop().time())
@@ -1661,8 +1686,8 @@ class TecomHub:
                 'msg_type': fr.msg_type,
                 'msg_type_name': entry.get('msg_type_name'),
                 'command_name': entry.get('command_name'),
-                'hex': payload.hex(),
-                'body_hex': fr.body.hex(),
+                'hex': entry.get('hex', ''),
+                'body_hex': entry.get('body_hex', ''),
             }
 
     def _track_rx_frame(self, fr: proto.Frame, addr=None) -> None:  # noqa: ANN001
@@ -1778,10 +1803,10 @@ class TecomHub:
         def _try_nowait_send() -> bool:
             try:
                 if peer is not None and hasattr(self._transport_obj, 'sendto_nowait'):
-                    self._transport_obj.sendto_nowait(payload, peer)
+                    self._transport_obj.sendto_nowait(self._wrap_transport_payload(payload), peer)
                     return True
                 if hasattr(self._transport_obj, 'send_nowait'):
-                    self._transport_obj.send_nowait(payload)
+                    self._transport_obj.send_nowait(self._wrap_transport_payload(payload))
                     return True
             except Exception as err:  # pragma: no cover - defensive logging
                 _LOGGER.debug("Panel ACK nowait send failed, falling back to async send: %s", err)
@@ -2342,6 +2367,9 @@ class TecomHub:
                 "transport": self.transport,
                 "peer": str(getattr(self, "_udp_last_peer", None)),
                 "config": {
+                    "auth_method": self.auth_method,
+                    "encryption_type": self.encryption_type,
+                    "decrypt_failures": self._decrypt_failures,
                     "poll_interval": self.poll_interval,
                     "door_status_mode": self.door_status_mode,
                     "door_status_per_cycle": self.door_status_per_cycle,

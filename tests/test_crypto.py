@@ -75,13 +75,16 @@ def test_over_long_key_is_rejected():
 # The datagram wrapper, identical for all three ciphers.
 # --------------------------------------------------------------------------
 
-# Captured session hello, encrypted with key "1234567890".
+# Actual UDP session hellos with the original captures' test key. These exclude
+# the PCAPNG block footer mistakenly included in the 3.4.0 fixture.
 HELLO_PLAINTEXT = bytes.fromhex("5ea080000125019234c0")
 CAPTURED = {
     crypto.ENC_AES_CBC_128:
-        "761f22b2c1593d0bb87e0b606f990ba4000a3892a0f8431666eb0d241d9fed80fe686c000000",
+        "761f22b2c1593d0bb87e0b606f990ba4000a3892a0f8431666eb0d241d9fed80fe68",
     crypto.ENC_AES_CBC_256:
-        None,   # exercised via round-trip below; the captured value differs by cipher
+        "761f22b2c1593d0bb87e0b606f990ba4000ac817a6279988269c2e0dfc40178730f4",
+    crypto.ENC_TWOFISH_128:
+        "761f22b2c1593d0bb87e0b606f990ba4000aa532ed5c93bdd6143ed2425bba35ac72",
 }
 
 
@@ -91,24 +94,24 @@ def test_wrapper_layout():
     dg = c.wrap(HELLO_PLAINTEXT, iv=iv)
     assert dg[:16] == iv
     assert int.from_bytes(dg[16:18], "big") == len(HELLO_PLAINTEXT)
-    ciphertext = dg[18:-4]
-    assert len(ciphertext) % 16 == 0
-    assert dg[-4] == (0x5C + len(ciphertext)) & 0xFF
-    assert dg[-3:] == b"\x00\x00\x00"
+    assert len(dg) == 34
+    assert len(dg[18:]) == 16
 
 
-def test_captured_aes128_datagram_decrypts():
-    c = crypto.CtplusCipher(crypto.ENC_AES_CBC_128, "1234567890")
-    dg = bytes.fromhex(CAPTURED[crypto.ENC_AES_CBC_128])
+@pytest.mark.parametrize("enc_type", CAPTURED)
+def test_captured_datagram_decrypts(enc_type):
+    c = crypto.CtplusCipher(enc_type, "1234567890")
+    dg = bytes.fromhex(CAPTURED[enc_type])
     assert c.unwrap(dg) == HELLO_PLAINTEXT
 
 
-def test_captured_datagram_re_encrypts_identically():
+@pytest.mark.parametrize("enc_type", CAPTURED)
+def test_captured_datagram_re_encrypts_identically(enc_type):
     # Reading the panel is only half of it; we must also produce datagrams it
     # will accept.
-    c = crypto.CtplusCipher(crypto.ENC_AES_CBC_128, "1234567890")
-    dg = bytes.fromhex(CAPTURED[crypto.ENC_AES_CBC_128])
-    assert c.wrap(c.unwrap(dg), iv=dg[:16]) == dg
+    c = crypto.CtplusCipher(enc_type, "1234567890")
+    dg = bytes.fromhex(CAPTURED[enc_type])
+    assert c.wrap(HELLO_PLAINTEXT, iv=dg[:16]) == dg
 
 
 @pytest.mark.parametrize("enc_type", [
@@ -131,7 +134,7 @@ def test_padding_is_zero_not_pkcs7():
     c = crypto.CtplusCipher(crypto.ENC_AES_CBC_128, "1234567890")
     aligned = bytes(range(16))
     dg = c.wrap(aligned)
-    assert len(dg[18:-4]) == 16          # no extra padding block
+    assert len(dg[18:]) == 16          # no extra padding block
     assert c.unwrap(dg) == aligned
 
 
@@ -156,6 +159,33 @@ def test_looks_encrypted_does_not_flag_plaintext():
     c = crypto.CtplusCipher(crypto.ENC_AES_CBC_128, "1234567890")
     dg = c.wrap(HELLO_PLAINTEXT, iv=bytes(range(16)))
     assert crypto.looks_encrypted(dg)
+
+
+@pytest.mark.parametrize("enc_type", CAPTURED)
+def test_arbitrary_iv_can_begin_with_plaintext_sync(enc_type):
+    c = crypto.CtplusCipher(enc_type, "1234567890")
+    dg = c.wrap(HELLO_PLAINTEXT, iv=b"\x5e" + bytes(15))
+    assert crypto.looks_encrypted(dg)
+    assert c.unwrap(dg) == HELLO_PLAINTEXT
+
+
+@pytest.mark.parametrize("enc_type", CAPTURED)
+def test_capture_footer_and_truncated_ciphertext_are_rejected(enc_type):
+    c = crypto.CtplusCipher(enc_type, "1234567890")
+    dg = bytes.fromhex(CAPTURED[enc_type])
+    for damaged in (dg + bytes.fromhex("6c000000"), dg[:-4],
+                    dg[:16] + b"\x00\x00" + dg[18:],
+                    dg[:16] + b"\x00\x11" + dg[18:], dg + bytes(16)):
+        assert not crypto.looks_encrypted(damaged)
+        assert c.unwrap(damaged) is None
+
+
+def test_nonzero_padding_is_rejected():
+    c = crypto.CtplusCipher(crypto.ENC_AES_CBC_128, "1234567890")
+    dg = bytearray(c.wrap(HELLO_PLAINTEXT, iv=bytes(16)))
+    # In CBC, flipping an IV byte flips that byte in the first plaintext block.
+    dg[15] ^= 1
+    assert c.unwrap(bytes(dg)) is None
 
 
 # --------------------------------------------------------------------------
