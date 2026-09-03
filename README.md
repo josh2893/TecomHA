@@ -1,4 +1,4 @@
-<img width="1536" height="1024" alt="TECOM-CHALLENGER-FOR-HA-BANNER" src="https://github.com/user-attachments/assets/2f9fa5ed-bc6c-4c04-86b5-c18dc6daab78" />
+<img width="1983" height="793" alt="Tecom-HA-Banner" src="https://github.com/user-attachments/assets/2a9c3255-5609-4662-9141-48926897dcb0" />
 
 # Tecom ChallengerPlus & Discovery Home Assistant Integration
 
