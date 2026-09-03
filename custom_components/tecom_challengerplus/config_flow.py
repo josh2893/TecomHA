@@ -417,27 +417,52 @@ def _validate(cfg: dict) -> dict:
     method = cfg.get(CONF_AUTH_METHOD, DEFAULT_AUTH_METHOD)
     if method == AUTH_METHOD_SECURITY_PASSWORD:
         pw = str(cfg.get(CONF_COMPUTER_PASSWORD, "") or "")
-        if not pw.isdigit() or len(pw) != 10:
+        if not pw.isascii() or not pw.isdigit() or len(pw) != 10:
             errors[CONF_COMPUTER_PASSWORD] = "security_password_format"
     else:
-        if not str(cfg.get(CONF_AUTH_USERNAME, "") or "").strip():
-            errors[CONF_AUTH_USERNAME] = "required"
-        if len(str(cfg.get(CONF_AUTH_USERNAME, "") or "")) > 30:
-            errors[CONF_AUTH_USERNAME] = "too_long"
-        if len(str(cfg.get(CONF_AUTH_PASSWORD, "") or "")) > 16:
-            errors[CONF_AUTH_PASSWORD] = "too_long"
+        username = str(cfg.get(CONF_AUTH_USERNAME, "") or "")
+        password = str(cfg.get(CONF_AUTH_PASSWORD, "") or "")
+        if not username.strip():
+            errors[CONF_AUTH_USERNAME] = "auth_username_required"
+        elif not username.isascii():
+            errors[CONF_AUTH_USERNAME] = "auth_username_ascii"
+        elif len(username) > 30:
+            errors[CONF_AUTH_USERNAME] = "auth_username_too_long"
+        if not password.isascii():
+            errors[CONF_AUTH_PASSWORD] = "auth_password_ascii"
+        elif len(password) > 16:
+            errors[CONF_AUTH_PASSWORD] = "auth_password_too_long"
 
     enc = cfg.get(CONF_ENCRYPTION_TYPE, ENC_NONE)
     key = str(cfg.get(CONF_ENCRYPTION_KEY, "") or "")
     if enc != ENC_NONE:
         limit = 32 if enc == ENC_AES_CBC_256 else 16
         if not key:
-            errors[CONF_ENCRYPTION_KEY] = "required"
+            errors[CONF_ENCRYPTION_KEY] = "encryption_key_required"
         elif len(key) > limit:
             errors[CONF_ENCRYPTION_KEY] = "key_too_long"
-        elif not key.isalnum():
+        elif not key.isascii() or not key.isalnum():
             errors[CONF_ENCRYPTION_KEY] = "key_not_alphanumeric"
     return errors
+
+
+def _form_schema(defaults: dict, errors: dict) -> tuple[vol.Schema, dict]:
+    """Expose validation errors on the sections Home Assistant renders.
+
+    The expandable form does not forward errors to its nested fields. A flat
+    field error is therefore invisible. Show the first error at each affected
+    section, expand it, and keep all submitted values so it can be corrected.
+    """
+    schema = _schema(defaults)
+    section_errors = {}
+    for key, value in schema.schema.items():
+        for field in value.schema.schema:
+            if field in errors:
+                section_errors[str(key)] = errors[field]
+                break
+        if errors:
+            value.options["collapsed"] = str(key) not in section_errors
+    return schema, section_errors
 
 
 class TecomChallengerPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -452,7 +477,7 @@ class TecomChallengerPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = _validate(user_input)
             host = (user_input.get(CONF_HOST) or "").strip()
             if not host:
-                errors[CONF_HOST] = "required"
+                errors[CONF_HOST] = "host_required"
             if not errors:
                 # Make a deterministic unique_id based on host+ports
                 uid = f"{host}:{user_input.get(CONF_TRANSPORT)}:{user_input.get(CONF_SEND_PORT)}"
@@ -460,7 +485,8 @@ class TecomChallengerPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=f"ChallengerPlus ({host})", data=user_input)
 
-        return self.async_show_form(step_id="user", data_schema=_schema({}), errors=errors)
+        schema, form_errors = _form_schema(user_input or {}, errors)
+        return self.async_show_form(step_id="user", data_schema=schema, errors=form_errors)
 
     @staticmethod
     def async_get_options_flow(config_entry):
@@ -484,4 +510,5 @@ class TecomChallengerPlusOptionsFlow(config_entries.OptionsFlow):
         defaults = {**self._entry.data, **self._entry.options}
         if user_input:
             defaults = {**defaults, **user_input}
-        return self.async_show_form(step_id="init", data_schema=_schema(defaults), errors=errors)
+        schema, form_errors = _form_schema(defaults, errors)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=form_errors)

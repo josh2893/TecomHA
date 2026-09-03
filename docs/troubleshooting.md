@@ -38,6 +38,12 @@ Review diagnostic files before posting them publicly. They contain site/network 
 | A tile's schedule always appears inactive | Check the linked schedule entity and its actual active state; schedules are not imported automatically |
 | RAS/keypad door control is unavailable | Objects 1–16 are read-only; full controls apply to DGP doors 17+ |
 
+### Submit returns to the connection form
+
+In version 3.4.0, a validation error inside a collapsed section could be hidden. Update to 3.4.1 or later for an explanation above the affected section and retained setup values when retrying.
+
+For authentication changes, check both **Security / computer password** and **Encryption key**. The panel's default security password is `0000000000`; an empty field is not the same value. A 10-character alphanumeric encryption key is accepted for AES-256. See [Configuration](configuration.md#connection-authentication-and-encryption).
+
 ### The panel responds initially, then goes silent
 
 An authentication mismatch can look like a connection failure. The panel may acknowledge the hello before refusing the credentials silently. Confirm the authentication type and credentials at both ends. If encrypted, also check the exact cipher and key.

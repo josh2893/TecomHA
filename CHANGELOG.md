@@ -8,6 +8,55 @@ way, the notes say so.
 
 ---
 
+## Version 3.4.1
+
+### Setup and options validation is visible
+
+Validation errors in the grouped form were returned under flat field names,
+while Home Assistant renders error messages against the top-level section
+names. The expandable form does not forward those errors to its nested fields.
+A rejected password or key could therefore redisplay the form without an
+explanation, appearing to reopen Connection instead of saving.
+
+Errors now appear above the affected section, which opens for correction.
+Messages identify the relevant field, and setup retains submitted settings on
+retry instead of rebuilding the form with empty defaults. Options continues
+to retain the current settings and submitted changes.
+
+A 10-character alphanumeric key is valid for AES-256, including when the
+security password is the panel default `0000000000`. AES-256 still accepts up
+to 32 characters; AES-128 and TwoFish still accept up to 16. The security
+password and encryption key remain separate fields.
+
+Validation also catches non-ASCII credentials before they reach the existing
+ASCII protocol encoder. Previously, Python's Unicode-aware digit/alphanumeric
+checks could accept text that the wire encoder could not send.
+
+**Evidence:** inspected Home Assistant's `ha-form` and `ha-form-expandable`
+error handling and reproduced invisible errors using the original flow.
+Regression tests exercise the actual setup/options flow methods with real
+Voluptuous validation and lightweight Home Assistant doubles. Coverage includes
+the reported key length/default-password combination, visible errors, retained
+values, correction and resubmission, and existing cipher key limits. No panel
+command bytes or encryption algorithms have changed. Live-panel testing is
+not included in this release's local validation.
+
+### New TecomHA artwork
+
+Replaced the four integration brand images with the supplied TecomHA design
+and added all four dark-mode counterparts. Standard images are 256 × 256;
+high-density `@2x` images are 512 × 512. The design's own background is retained
+in both themes, preserving its colours and square proportions.
+
+### Upgrading
+
+Replace the integration folder and restart Home Assistant, then reopen
+**Configure** and save the authentication/encryption settings. No removal,
+re-addition or config-entry migration is needed. Local artwork requires Home
+Assistant 2026.3 or later; refresh the frontend if the old image remains cached.
+
+---
+
 ## Version 3.4.0
 
 Path authentication and encryption now work, and the setup screen has been

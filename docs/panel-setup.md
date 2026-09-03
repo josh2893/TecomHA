@@ -61,7 +61,7 @@ The panel path's **Authentication type** must match the method selected in Home 
 | Method | Required details |
 | --- | --- |
 | **Security / computer password** | Exactly 10 digits from the communication path |
-| **Path user name and password** | A user name of up to 30 characters and a password of up to 16 characters |
+| **Path user name and password** | An ASCII user name of up to 30 characters and an ASCII password of up to 16 characters |
 
 The panel's default security password is `0000000000`. The project's existing panel guidance notes that this default cannot be used when the client connects over DHCP; configure a non-default password in that situation.
 

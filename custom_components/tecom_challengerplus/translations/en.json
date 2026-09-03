@@ -279,9 +279,16 @@
     "error": {
       "required": "This field is required.",
       "too_long": "Too long for the panel's field.",
-      "security_password_format": "The security password must be exactly 10 digits.",
+      "security_password_format": "The security / computer password must be exactly 10 digits (0-9). If the panel still uses its default, enter 0000000000.",
       "key_too_long": "The encryption key is longer than this encryption type allows.",
-      "key_not_alphanumeric": "The encryption key must be letters and digits only."
+      "key_not_alphanumeric": "The encryption key must contain ASCII letters (A-Z, a-z) and digits (0-9) only, with no spaces or symbols.",
+      "host_required": "Enter the panel host or IP address in Connection.",
+      "auth_username_required": "Enter the path user name in Authentication and encryption.",
+      "auth_username_ascii": "The path user name must contain ASCII characters only.",
+      "auth_username_too_long": "The path user name must be no more than 30 characters.",
+      "auth_password_ascii": "The path password must contain ASCII characters only.",
+      "auth_password_too_long": "The path password must be no more than 16 characters.",
+      "encryption_key_required": "Enter the encryption key, or select None if the panel path is not encrypted."
     }
   },
   "options": {
@@ -564,9 +571,16 @@
     "error": {
       "required": "This field is required.",
       "too_long": "Too long for the panel's field.",
-      "security_password_format": "The security password must be exactly 10 digits.",
+      "security_password_format": "The security / computer password must be exactly 10 digits (0-9). If the panel still uses its default, enter 0000000000.",
       "key_too_long": "The encryption key is longer than this encryption type allows.",
-      "key_not_alphanumeric": "The encryption key must be letters and digits only."
+      "key_not_alphanumeric": "The encryption key must contain ASCII letters (A-Z, a-z) and digits (0-9) only, with no spaces or symbols.",
+      "host_required": "Enter the panel host or IP address in Connection.",
+      "auth_username_required": "Enter the path user name in Authentication and encryption.",
+      "auth_username_ascii": "The path user name must contain ASCII characters only.",
+      "auth_username_too_long": "The path user name must be no more than 30 characters.",
+      "auth_password_ascii": "The path password must contain ASCII characters only.",
+      "auth_password_too_long": "The path password must be no more than 16 characters.",
+      "encryption_key_required": "Enter the encryption key, or select None if the panel path is not encrypted."
     }
   },
   "services": {

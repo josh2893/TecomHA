@@ -52,3 +52,9 @@ The header uses [Shields.io](https://shields.io/) badges in the `for-the-badge` 
 The validation badge is linked to the real [Validate workflow](https://github.com/josh2893/TecomHA/actions/workflows/validate.yml) on `main`. Its result updates from the workflow status; no passing result is hardcoded. Release and licence values do not need editing for each new version.
 
 The existing GitHub-hosted banner is reused by URL. If replacing it, update the header image in the root README and keep meaningful alternative text.
+
+### Integration icons and logos
+
+Home Assistant uses the PNG files in `custom_components/tecom_challengerplus/brand/`. Standard icons and logos are 256 × 256 pixels; the `@2x` versions are 512 × 512. The `dark_` variants provide the same artwork for dark mode. The supplied design has its own dark background, so its colours and contrast are preserved in both themes.
+
+The eight files are `icon.png`, `icon@2x.png`, `logo.png`, `logo@2x.png` and their `dark_` equivalents. Replace the full set together and retain the square aspect ratio. Local brand images are used from Home Assistant 2026.3 onwards, as described in the [Home Assistant brand image documentation](https://developers.home-assistant.io/docs/core/integration/brand_images/). Older versions may still display the cached remote artwork.

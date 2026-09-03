@@ -8,6 +8,12 @@ Open **Settings → Devices & services → Tecom ChallengerPlus → Configure** 
 
 These fields must match the panel's dedicated communication path. See [Panel setup](panel-setup.md) for ports, credentials, encryption and event filters.
 
+**Security / computer password** and **Encryption key** are separate settings. If the panel still uses its default security password, enter `0000000000` in the security password field. Enter the communication path's encryption key in **Encryption key**, and choose the matching **Encryption type**.
+
+A 10-character key containing letters and digits is valid for **AES CBC (256 bit)**; it does not need to be 32 characters long. It must still match the panel exactly. Accepted key characters are `A-Z`, `a-z` and `0-9`.
+
+If a value cannot be saved, the affected section opens with an explanation above it. Correct the indicated setting and submit again; your other entries are retained. Saving checks the format of these values, not whether the panel accepts them. Check the connection afterwards.
+
 ## Choose your panel objects
 
 Configure only the objects you actually want loaded into Home Assistant. Ranges support comma-separated numbers and inclusive spans, such as `1-16,25,31`.
