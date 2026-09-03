@@ -71,6 +71,23 @@ ciphers. Every one decrypts to a CRC-valid frame and re-encrypts byte-identical
 to the original, so the integration can both read the panel and produce
 datagrams it will accept.
 
+### User name order
+
+Panels are often loaded with names surname first, so the panel's own user list
+sorts usefully. That reads oddly in Home Assistant, where an access event showed
+`Smith John` rather than `John Smith`.
+
+A **User name order** setting in the user sync section can present names given
+name first. It defaults to leaving them exactly as the panel holds them, because
+the ordering is a site convention rather than anything the protocol defines.
+
+Only names of exactly two words are swapped. Entries such as `Card 3 Lock Box`
+or a single `Master` are descriptive rather than personal, and reordering them
+would produce nonsense.
+
+Names are stored as the panel holds them and formatted when read, so changing
+the setting takes effect immediately without another user sync.
+
 ### Setup and options screens reorganised
 
 The single 51-field form is now grouped into collapsible sections — Connection,

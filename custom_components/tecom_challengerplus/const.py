@@ -159,6 +159,16 @@ CONF_USER_SYNC_ENABLED = "user_sync_enabled"
 CONF_USER_SYNC_ON_STARTUP = "user_sync_on_startup"
 CONF_USER_SYNC_PERIODIC_ENABLED = "user_sync_periodic_enabled"
 CONF_USER_SYNC_INTERVAL_HOURS = "user_sync_interval_hours"
+CONF_USER_NAME_ORDER = "user_name_order"
+
+# How the panel's stored user names are presented. Sites commonly enter names
+# surname first so the panel's own list sorts usefully, which reads oddly in
+# Home Assistant. Swapping is opt-in because it is a site convention, not
+# something the protocol defines.
+USER_NAME_ORDER_PANEL = "as_stored"
+USER_NAME_ORDER_GIVEN_FIRST = "given_name_first"
+USER_NAME_ORDERS = (USER_NAME_ORDER_PANEL, USER_NAME_ORDER_GIVEN_FIRST)
+DEFAULT_USER_NAME_ORDER = USER_NAME_ORDER_PANEL
 
 DEFAULT_USER_SYNC_ENABLED = False
 DEFAULT_USER_SYNC_ON_STARTUP = True

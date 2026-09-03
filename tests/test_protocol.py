@@ -145,9 +145,10 @@ def test_area_events_report_area_not_object():
 
 def test_user_number_is_sixteen_bit():
     # A four-digit user truncated to its low byte under a single-byte read,
-    # silently attributing the access to a different user.
-    ev = proto.parse_event_full(bytes.fromhex("0f0c11490eaa9211000003090000"))
-    assert ev["user"] == 2307
+    # silently attributing the access to a different user. 4131 is 0x1023, so a
+    # single-byte read would report user 35.
+    ev = proto.parse_event_full(bytes.fromhex("0f0c11490eaa9211000023100000"))
+    assert ev["user"] == 4131
 
 
 @pytest.mark.parametrize("body", [

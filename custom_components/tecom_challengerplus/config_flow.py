@@ -43,6 +43,10 @@ from .const import (
     AUTH_METHOD_CREDENTIALS,
     DEFAULT_AUTH_METHOD,
     DEFAULT_COMPUTER_PASSWORD,
+    CONF_USER_NAME_ORDER,
+    USER_NAME_ORDER_PANEL,
+    USER_NAME_ORDER_GIVEN_FIRST,
+    DEFAULT_USER_NAME_ORDER,
     CONF_ENCRYPTION_KEY,
     CONF_POLL_INTERVAL,
     CONF_INPUTS_COUNT,
@@ -157,6 +161,16 @@ ENC_SELECTOR = selector.SelectSelector(
             {"label": "AES CBC (128 bit)", "value": ENC_AES_CBC_128},
             {"label": "AES CBC (256 bit)", "value": ENC_AES_CBC_256},
             {"label": "TwoFish (128 bit)", "value": ENC_TWOFISH_128},
+        ],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+    )
+)
+
+USER_NAME_ORDER_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[
+            {"label": "As stored on the panel", "value": USER_NAME_ORDER_PANEL},
+            {"label": "Swap to given name first", "value": USER_NAME_ORDER_GIVEN_FIRST},
         ],
         mode=selector.SelectSelectorMode.DROPDOWN,
     )
@@ -365,6 +379,7 @@ def _schema(defaults: dict) -> vol.Schema:
         vol.Optional(CONF_USER_SYNC_ON_STARTUP, default=bool(g(CONF_USER_SYNC_ON_STARTUP, DEFAULT_USER_SYNC_ON_STARTUP))): selector.BooleanSelector(),
         vol.Optional(CONF_USER_SYNC_PERIODIC_ENABLED, default=bool(g(CONF_USER_SYNC_PERIODIC_ENABLED, DEFAULT_USER_SYNC_PERIODIC_ENABLED))): selector.BooleanSelector(),
         vol.Optional(CONF_USER_SYNC_INTERVAL_HOURS, default=int(g(CONF_USER_SYNC_INTERVAL_HOURS, DEFAULT_USER_SYNC_INTERVAL_HOURS))): _num(1, 720, unit="hours"),
+        vol.Optional(CONF_USER_NAME_ORDER, default=str(g(CONF_USER_NAME_ORDER, DEFAULT_USER_NAME_ORDER))): USER_NAME_ORDER_SELECTOR,
     }
 
     advanced = {

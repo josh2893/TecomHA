@@ -85,6 +85,9 @@ from .const import (
     CONF_USER_SYNC_ON_STARTUP,
     CONF_USER_SYNC_PERIODIC_ENABLED,
     CONF_USER_SYNC_INTERVAL_HOURS,
+    CONF_USER_NAME_ORDER,
+    USER_NAME_ORDER_GIVEN_FIRST,
+    DEFAULT_USER_NAME_ORDER,
     DEFAULT_USER_SYNC_ENABLED,
     DEFAULT_USER_SYNC_ON_STARTUP,
     DEFAULT_USER_SYNC_PERIODIC_ENABLED,
@@ -340,6 +343,7 @@ class TecomHub:
         # Path authentication. Builds before this reworking always sent the
         # panel's default security password regardless of configuration, so the
         # config entry migration pins existing entries to that value.
+        self.user_name_order = str(cfg.get(CONF_USER_NAME_ORDER, DEFAULT_USER_NAME_ORDER) or DEFAULT_USER_NAME_ORDER)
         self.auth_method = str(cfg.get(CONF_AUTH_METHOD, DEFAULT_AUTH_METHOD) or DEFAULT_AUTH_METHOD)
         self.computer_password = str(cfg.get(CONF_COMPUTER_PASSWORD, DEFAULT_COMPUTER_PASSWORD) or DEFAULT_COMPUTER_PASSWORD)
         self.auth_username = str(cfg.get(CONF_AUTH_USERNAME, "") or "")
@@ -2687,10 +2691,20 @@ class TecomHub:
         return len(self.state.user_names)
 
     def user_name(self, number: int) -> str | None:
-        """Friendly name for a user number, if known."""
+        """Friendly name for a user number, if known.
+
+        The stored name is kept exactly as the panel holds it and formatted on
+        read, so changing the name order option takes effect immediately
+        without needing another user sync.
+        """
         if not number:
             return None
-        return self.state.user_names.get(number)
+        name = self.state.user_names.get(number)
+        if not name:
+            return None
+        return proto.format_user_name(
+            name, given_name_first=self.user_name_order == USER_NAME_ORDER_GIVEN_FIRST
+        )
 
     async def async_arm_area(self, area: int, mode: str = "away", force: bool = False) -> None:
         """Arm an area.

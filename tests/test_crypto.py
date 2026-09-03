@@ -185,14 +185,17 @@ def test_security_password_rejects_anything_but_ten_digits(bad):
         proto.encode_security_password(bad)
 
 
-def test_credentials_frame_matches_capture():
+def test_credentials_frame_layout():
+    # Layout confirmed from a capture; the values here are synthetic. What is
+    # being locked down is the field widths, the length prefixes and the null
+    # padding, not the credentials themselves.
     expected = (
         "01310a1e"                                    # cmd, len, method, field width
-        "544553545553455231" + "00" * 21 +            # "TESTUSER1" padded to 30
+        "5041544855534552" + "00" * 22 +              # "PATHUSER" padded to 30
         "10"                                          # password field width
-        "39383736353433323130" + "00" * 6             # "9876543210" padded to 16
+        "50617468506173733939" + "00" * 6             # "PathPass99" padded to 16
     )
-    assert proto.cmd_session_auth_credentials("TESTUSER1", "9876543210").hex() == expected
+    assert proto.cmd_session_auth_credentials("PATHUSER", "PathPass99").hex() == expected
 
 
 def test_credential_field_widths():
@@ -209,3 +212,38 @@ def test_credential_field_widths():
 def test_credentials_reject_over_long_values(user, pw):
     with pytest.raises(ValueError):
         proto.cmd_session_auth_credentials(user, pw)
+
+
+# --------------------------------------------------------------------------
+# User name presentation
+#
+# Panels are commonly loaded surname first so the panel's own list sorts
+# usefully. Swapping is opt-in, and only applied to two-word names: entries
+# like "Card 3 Lock Box" are descriptive, and reordering them is nonsense.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("stored,expected", [
+    ("Smith John", "John Smith"),
+    ("Brown Alice", "Alice Brown"),
+    ("Jones Sam", "Sam Jones"),
+])
+def test_two_word_names_are_swapped(stored, expected):
+    assert proto.format_user_name(stored, given_name_first=True) == expected
+
+
+@pytest.mark.parametrize("stored", [
+    "Master",                # single word
+    "Smith (Mobile) J",      # three words
+    "Card 3 Lock Box",     # descriptive, not a person
+    "",
+])
+def test_other_names_are_left_alone(stored):
+    assert proto.format_user_name(stored, given_name_first=True) == stored.strip()
+
+
+@pytest.mark.parametrize("stored", [
+    "Smith John", "Master", "Card 3 Lock Box",
+])
+def test_default_order_never_changes_the_name(stored):
+    # The option must default to leaving names exactly as the panel holds them.
+    assert proto.format_user_name(stored) == stored

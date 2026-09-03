@@ -526,6 +526,23 @@ def encode_security_password(password: str) -> bytes:
     return bytes(out)
 
 
+def format_user_name(name: str, given_name_first: bool = False) -> str:
+    """Present a stored user name, optionally swapping the word order.
+
+    Panels are commonly loaded with names surname first so the panel's own user
+    list sorts usefully. Only names of exactly two words are swapped: entries
+    like "Card 3 Lock Box" or a single "Master" are descriptive rather than
+    personal, and reordering them produces nonsense.
+    """
+    text = (name or "").strip()
+    if not given_name_first or not text:
+        return text
+    parts = text.split()
+    if len(parts) != 2:
+        return text
+    return f"{parts[1]} {parts[0]}"
+
+
 def _fixed_field(text: str, width: int) -> bytes:
     raw = (text or "").encode("ascii", errors="strict")
     if len(raw) > width:
