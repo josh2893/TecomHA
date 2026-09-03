@@ -368,10 +368,182 @@ Things that have already caused bugs and are not obvious from reading:
 
 ## 12. Documentation
 
-- **`README.md`** — what the integration is and how to use it. **No version notes here.** It was rewritten at 3.2.7 and is edited incrementally from there; do not regenerate it wholesale.
-- **`CHANGELOG.md`** — all version history, protocol findings, upgrade notes. One `## Version X.Y.Z` section per release; the release workflow extracts from it verbatim.
+### Purpose
+
+Keep TecomHA's documentation welcoming, accurate and easy to navigate. The root README introduces what people can do with their Tecom panel in Home Assistant. Detailed instructions and technical reference belong in `docs/`.
+
+Preserve the redesigned structure during routine updates. Improve the relevant sections without turning the README back into a technical manual. Follow explicit maintainer requests when they call for a different structure.
+
+### File ownership
+
+Use this map to decide where a change belongs. Paths are relative to the repository root.
+
+| File | Responsibility |
+| --- | --- |
+| `README.md` | Project introduction, user-facing capabilities, practical use cases, dashboard overview, short getting-started steps and links to further help |
+| `docs/README.md` | Documentation index, with a short description and link for each guide |
+| `docs/installation.md` | Prerequisites, HACS and manual installation, adding the integration, first checks and the general update process |
+| `docs/panel-setup.md` | Panel communication paths, connection modes, IP addresses, ports, event filters, authentication and encryption |
+| `docs/configuration.md` | Home Assistant configuration/options fields, object ranges, naming imports, polling, user name sync and advanced defaults |
+| `docs/entities.md` | Available entity types, supported controls, state meanings, useful attributes and current limitations |
+| `docs/dashboards-and-automations.md` | Dashboard examples, an introduction to the companion tiles, contact/schedule indicators and usable automation examples |
+| `docs/events-and-actions.md` | Event names and payloads, standard Home Assistant actions, custom integration services, parameters and targeting behaviour |
+| `docs/troubleshooting.md` | Symptoms, diagnostic steps, debug dumps, logging and packet-capture guidance |
+| `docs/protocol.md` | Framing, acknowledgements, event queues, status bits, event-code mappings and implementation references |
+| `docs/contributing.md` | Issue-report requirements, useful captures, development references and contributor-facing documentation guidance |
+| `CHANGELOG.md` | Version history, release-specific changes, upgrade notes and evidence for protocol changes |
+| `CLAUDE.md` | Repository instructions for development and documentation work; keep the full agent instructions here |
+
+Prefer an existing guide over creating a new file. Add a guide only when a distinct topic needs its own page. If adding or renaming a guide, update `docs/README.md` and all affected references. Keep the root README's navigation selective rather than listing every subsection.
+
+### Root README structure
+
+Preserve this order unless the maintainer requests a redesign:
+
+1. Existing project banner.
+2. Centred TecomHA title and short tagline.
+3. Badge row and primary navigation links.
+4. Brief explanation of the integration and its local panel connection.
+5. **What can you do?** — capabilities expressed as user outcomes.
+6. **Make it part of your home** — a few practical automation ideas.
+7. **Put it on your dashboard** — built-in cards and the optional companion tiles.
+8. **Get started** — a short outline linking to the complete guides.
+9. **Guides and reference** — a compact navigation table.
+10. **Community project** — affiliation statement, support link and licence.
+
+Keep the README close to its current size: approximately 500–700 words of visible content is a useful target, not a rigid requirement. When adding a feature, first consider whether an existing bullet can describe it.
+
+Explain benefits before implementation. For example, write “See which input triggered an alarm” in the README; document `alarm_inputs` and `alarm_input_names` in the entity guide.
+
+Keep important capability limits visible where they affect a reader's decision, such as the distinction between controllable DGP doors and read-only RAS objects. Link to the detailed explanation.
+
+Do not add full configuration tables, lengthy YAML examples, raw packets, hexadecimal mappings, diagnostic logs, release-by-release notes or troubleshooting histories to the README. Put those in their assigned guides and add a short link when useful.
+
+### Header, banner and badges
+
+- Preserve the current banner, title, tagline, alignment and header links during ordinary documentation maintenance.
+- Keep the existing `for-the-badge` style and colour scheme. The current badge labels use dark `282a36`, with pink `ff79c6`, blue `41bdf5` and purple `bd93f9` accents.
+- Retain the Release, HACS, Checks and Licence badges. Additional badges should have a clear user purpose and should not crowd the header.
+- Keep release, licence and check results dynamic. Never hardcode “passing”, invent a workflow, or update a release badge by typing a version into it.
+- Describe HACS as a **custom repository** unless the project's distribution status has actually changed and been verified.
+- Link the Checks badge to the actual validation workflow and use its intended branch. Check paths if workflows are renamed.
+- Preserve meaningful image alternative text and the banner's aspect ratio. Do not stretch, crop or replace the artwork as a side effect of a text update.
+- Keep external badge/image URLs valid. Use `&amp;` between query parameters inside HTML attributes.
+
+### Writing style
+
+Write for someone who uses Home Assistant but may not know the Tecom protocol or programming terminology.
+
+- Use plain English, short paragraphs and direct instructions.
+- Use Australian English in prose: “behaviour”, “colour”, “licence” and “synchronisation”. Preserve exact spelling in code, identifiers and interface labels.
+- Explain unfamiliar terms on first use where readers need them, such as an input being “sealed” or “unsealed”.
+- Use the current interface labels for settings and actions. Do not invent a menu path or assume an older screen is still current.
+- Distinguish what the integration provides, what the companion tiles display, and what users must configure themselves.
+- Avoid marketing claims such as “perfectly reliable”, “fully supported” or “works with every panel”. State the actual supported behaviour.
+- Keep historical faults and their version-specific fixes in the changelog. Include a brief troubleshooting reference only where it still helps affected users.
+- Put a practical limitation beside the feature or example it affects. Avoid repeating the same disclaimer throughout the documentation.
+
+### Markdown formatting
+
+Use GitHub-flavoured Markdown that renders directly on GitHub.
+
+- Each normal guide starts with one `# Page title`. Use `##` for main sections and `###` for subsections. Avoid deeper nesting unless necessary.
+- Keep the existing HTML `<h1>` in the root README; do not add a second Markdown H1.
+- Use sentence case for headings. Do not wrap headings in extra bold formatting.
+- Leave blank lines around headings, paragraphs, lists, tables and fenced code blocks.
+- Use numbered lists for procedures and bullets for parallel options or features.
+- Use tables for exact mappings, settings, defaults and comparisons. Keep cells concise; move long explanations below the table.
+- Use **bold** for interface labels and important distinctions. Use `inline code` for filenames, paths, entity IDs, service names, attribute names and literal values.
+- Use fenced blocks with a language label such as `yaml`, `json`, `python`, `bash` or `text`.
+- Use ordinary Markdown for guide content. Reserve HTML for the existing centred README header or another clear rendering need; do not introduce HTML page layouts, scripts or custom CSS.
+- Do not add YAML front matter, Obsidian wikilinks, embedded base64 images, plugin-specific callouts or footnote syntax such as `[^1]`.
+- Cite external documentation with ordinary descriptive Markdown links beside the relevant explanation. Never leave chat citation tokens or placeholder references in a committed file.
+- Escape literal pipe characters in table cells where needed, including pipes inside inline code.
+
+### Navigation, filenames and links
+
+Each guide in `docs/` should have a short navigation line below its title, normally beginning:
+
+```markdown
+[← Documentation](README.md)
+```
+
+The documentation index links back to the project front page:
+
+```markdown
+[← Back to TecomHA](../README.md)
+```
+
+Use relative links for repository files:
+
+| Link location | Example |
+| --- | --- |
+| Root README to a guide | `[Configuration](docs/configuration.md)` |
+| One guide to another | `[Entities](entities.md)` |
+| A guide to the root changelog | `[Changelog](../CHANGELOG.md)` |
+| A guide to a section | `[Polling](configuration.md#polling)` |
+
+Use full HTTPS links for other repositories and external documentation. Never commit `sandbox:` links, local workspace paths or temporary download links.
+
+Preserve existing filenames and case. New guide names should use lowercase words separated by hyphens, such as `panel-setup.md`. `README.md`, `CHANGELOG.md` and `CLAUDE.md` retain their established names.
+
+Changing a heading may change its GitHub anchor. Update incoming links and verify the resulting anchor, especially when punctuation is involved.
+
+### Examples and technical accuracy
+
+Read the relevant current implementation before documenting behaviour. Useful sources include `const.py`, `config_flow.py`, translations, entity platforms, `services.yaml`, service handlers, the manifest, workflows and the companion tiles repository. Comments and older documentation can be stale; check what the code actually does.
+
+Do not infer hardware support from a generic protocol capability. Keep capture-confirmed behaviour, code behaviour and unverified assumptions distinct. If evidence conflicts, explain the discrepancy rather than silently choosing a convenient claim.
+
+For YAML and action examples:
+
+- Use consistent two-space YAML indentation and quote literal state strings such as `"on"` and `"off"`.
+- Say whether the block is a complete automation, a card, an action or a fragment to add to another example.
+- Use generic entities such as `lock.front_entry` and explain that readers must replace them with their actual IDs.
+- State required cards, helpers, schedules, scenes or notification services. Do not present an example-only entity as something TecomHA automatically creates.
+- Give complete examples for the scope described; avoid ellipses in copyable code.
+- Verify service parameters, entity targeting and behaviour when several panels are loaded. Never assume an action affects only one panel.
+- Check trigger behaviour around startup, unavailable states, repeated events and timer resets where relevant to the example.
+- Keep credentials, card/PIN information and real site/user data out of examples and screenshots.
+
+Preserve these distinctions unless verified implementation changes require an update:
+
+- Door **lock state** and physical **contact state** are separate.
+- Momentary **Open** and latched **Unlock** are different actions.
+- **Force arm** does not mean unsealed inputs are isolated.
+- CTPlus name imports apply to configured, loaded objects; they do not create additional entities.
+- Object-name imports and access user-name downloads are separate features.
+- A tile's linked schedule indicator is not an automatic import of Tecom timezones.
+- A configured polling interval does not imply that runtime polling is enabled for every object group.
+- A maintenance buffer reset is not a routine event retrieval operation.
+
+### Changelog entries
 
 A changelog entry should record what changed, **the evidence it rests on**, and anything a user must do on upgrade. Behaviour changes to existing service calls must be called out explicitly — several releases have altered what an existing call does.
+
+### Update workflow
+
+1. Read the current README, documentation index, affected guides and relevant implementation. Review the change being documented.
+2. Identify which guide owns the detailed explanation. Update that guide first, including defaults, limitations and examples that the change affects.
+3. Update related guides where necessary, using links instead of duplicating entire explanations.
+4. Update the root README only when a user-facing capability, prerequisite, key limitation or navigation link has changed. Routine fixes do not automatically need another README bullet.
+5. Record release-specific changes in `CHANGELOG.md` under the appropriate `## Version X.Y.Z` heading. Preserve the format required by the release workflow. Do not invent a release or bump the integration version solely for a documentation tidy-up.
+6. Review all links, headings, examples and screenshots affected by the edit. If information moves, ensure its useful content remains available in the new location.
+7. Report the files changed, the practical documentation changes and the checks actually performed. Identify any unresolved accuracy questions.
+
+Keep documentation edits focused. Do not modify integration code, workflows, branding or unrelated repository instructions merely to make documentation statements true.
+
+### Checks before finishing
+
+- Preview changed Markdown and confirm headings, lists, tables, HTML header elements and code fences render properly.
+- Check relative file links and section anchors, including links in the documentation index and root README.
+- Parse changed YAML/JSON examples where practical. Syntax validation alone does not establish that an automation works on a live panel.
+- Confirm documented service names, fields, defaults and supported features against the current source.
+- Check that moved information has not been lost, and that duplicate explanations do not disagree.
+- Check for real credentials/site data, placeholder text, broken image references and leftover chat formatting.
+- Run `git diff --check` and review the final diff for unintended changes.
+
+For documentation-only work, validate the documentation; there is no need to claim or perform panel/protocol testing unless a specific change requires it. Code changes and releases remain subject to the repository's existing validation requirements. Report any checks you could not perform accurately.
 
 ---
 
