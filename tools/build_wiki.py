@@ -40,6 +40,8 @@ MARKDOWN_LINK = re.compile(r"(?P<prefix>\]\()(?P<target>[^)\s]+)(?P<suffix>\))")
 HTML_LINK = re.compile(
     r'(?P<prefix>\bhref=["\'])(?P<target>[^"\']+)(?P<suffix>["\'])', re.IGNORECASE
 )
+MARKDOWN_IMAGE = re.compile(r'!\[[^\]]*\]\(([^)\s]+)(?:\s+["\'][^)]*["\'])?\)')
+HTML_IMAGE = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\']', re.IGNORECASE)
 
 
 def split_fragment(target: str) -> tuple[str, str]:
@@ -127,6 +129,7 @@ def validate_wiki(output: Path) -> None:
         r'(?<!!)\[[^\]]*\]\(([^)]+)\)|<a\s+[^>]*href=["\']([^"\']+)["\']',
         re.IGNORECASE,
     )
+    output_root = output.resolve()
 
     for source_name, source in pages.items():
         in_fence = False
@@ -163,6 +166,25 @@ def validate_wiki(output: Path) -> None:
                         f"{source.name}:{line_number}: missing anchor #{anchor} on {page_name}"
                     )
 
+            for pattern in (MARKDOWN_IMAGE, HTML_IMAGE):
+                for match in pattern.finditer(line):
+                    target = unquote(match.group(1).strip())
+                    if target.startswith(("http://", "https://", "data:")):
+                        continue
+                    image_path = target.partition("?")[0].partition("#")[0]
+                    candidate = (source.parent / image_path).resolve()
+                    try:
+                        candidate.relative_to(output_root)
+                    except ValueError:
+                        errors.append(
+                            f"{source.name}:{line_number}: image leaves Wiki output {target!r}"
+                        )
+                        continue
+                    if not candidate.is_file():
+                        errors.append(
+                            f"{source.name}:{line_number}: missing image {target!r}"
+                        )
+
     if errors:
         raise SystemExit("Wiki validation failed:\n- " + "\n- ".join(errors))
 
@@ -185,8 +207,13 @@ def build_wiki(output: Path) -> None:
             transform_document(source, root_document=False), encoding="utf-8"
         )
 
-    for source in sorted((ROOT / ".github" / "wiki").glob("*.md")):
-        shutil.copy2(source, output / source.name)
+    static_root = ROOT / ".github" / "wiki"
+    for source in sorted(static_root.rglob("*")):
+        if not source.is_file():
+            continue
+        target = output / source.relative_to(static_root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
 
     validate_wiki(output)
 
