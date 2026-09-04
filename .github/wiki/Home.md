@@ -1,3 +1,5 @@
+<!-- Managed from josh2893/TecomHA/.github/wiki/Home.md. -->
+
 # TecomHA Wiki
 
 Welcome to the documentation for the Tecom ChallengerPlus and Discovery Home Assistant integration.
