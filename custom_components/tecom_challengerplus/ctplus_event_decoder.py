@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from .ctplus_eventtable_data import EVENTTABLE
+from .ctplus_protocol import EVENT_ACCESS_DENIED_CARD, EVENT_ACCESS_DENIED_VOID
 
 # Hand-confirmed overrides from supplied captures / CTPlus UI. These take precedence
 # over the bundled eventtable where field naming in the table is ambiguous for live UI.
 _CONFIRMED_TEXT = {
+    EVENT_ACCESS_DENIED_CARD: "Access denied - Card rejected",
+    EVENT_ACCESS_DENIED_VOID: "Access denied - void",
     0x0B: "Secured",
     0x0C: "Accessed",
     0x84: "On",
@@ -34,6 +37,7 @@ _CONFIRMED_TEXT = {
 }
 
 _DOOR_CODES = {0x86,0x87,0x88,0x89,0x92,0x9D,0xA5,0xA6,0xA7,0xA8,0xA9,0xAA,0xAE,0xAF}
+_DOOR_CODES.update((EVENT_ACCESS_DENIED_CARD, EVENT_ACCESS_DENIED_VOID))
 _INPUT_CODES = {0x96,0x97}
 _RELAY_CODES = {0x84,0x85}
 _AREA_CODES = {0x0B,0x0C}
@@ -111,6 +115,10 @@ def decode_ctplus_event(code: int, obj: int, raw_hex: str) -> dict:
         'text': text,
         'message': text,
     }
+    if code == EVENT_ACCESS_DENIED_CARD:
+        payload.update(raw='', raw_redacted=True, denial_reason='card_rejected')
+    elif code == EVENT_ACCESS_DENIED_VOID:
+        payload['denial_reason'] = 'void'
     if sub is not None:
         payload['subcode'] = sub
         payload['subcode_hex'] = f"0x{sub:02X}"

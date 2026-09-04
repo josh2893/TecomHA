@@ -86,4 +86,4 @@ AES is the preferred option where the panel offers a choice. TwoFish is supporte
 
 A wrong key can look like an offline panel. Check the encryption settings alongside authentication when diagnosing a silent connection.
 
-For implementation details and the evidence behind authentication/encryption support, see the [3.4.2 changelog entry](../CHANGELOG.md#version-342) and [protocol reference](protocol.md).
+For implementation details and the evidence behind authentication/encryption support, see the [stable release notes](../CHANGELOG.md#version-343) and [protocol reference](protocol.md).

@@ -20,7 +20,7 @@ data: {}
 
 With multiple panels, the action dumps all loaded hubs unless you supply an `entry_id`.
 
-Review diagnostic files before posting them publicly. They contain site/network information and traffic. Version 3.4.2 redacts authentication and user-record hex, including structured copies and acknowledgement references. Older dumps and packet captures can still contain credentials; the redaction does not remove general site/network information.
+Review diagnostic files before posting them publicly. They contain site/network information and traffic. Version 3.4.3 redacts authentication, user-record and recognised `0x4B` card-rejection hex, including structured copies and acknowledgement references. Older dumps and packet captures can still contain credentials; the redaction does not remove general site/network information.
 
 ## Common symptoms
 
@@ -48,7 +48,7 @@ For authentication changes, check both **Security / computer password** and **En
 
 An authentication mismatch can look like a connection failure. The panel may acknowledge the hello before refusing the credentials silently. Confirm the authentication type and credentials at both ends. If encrypted, also check the exact cipher and key.
 
-If encryption stops the connection on 3.4.0 or 3.4.1, update to **3.4.2 or later**. Those versions added four incorrect bytes to encrypted datagrams, rejected genuine replies and sent immediate acknowledgements without encryption. The fix applies to both authentication methods and all three ciphers over UDP. See the [3.4.2 changelog](../CHANGELOG.md#version-342).
+If encryption stops the connection on 3.4.0 or 3.4.1, update to **3.4.2 or later**. Those versions added four incorrect bytes to encrypted datagrams, rejected genuine replies and sent immediate acknowledgements without encryption. The fix applies to both authentication methods and all three ciphers over UDP. See the [stable release notes](../CHANGELOG.md#version-343).
 
 Take a fresh dump with encryption enabled while the failure is occurring. Its `config` section reports `auth_method`, `encryption_type` and consecutive `decrypt_failures`, without the passwords or key. A repeated `decrypt_failed` note or a nonzero failure count means the receiver could not recover valid frames; check the selected cipher/key and packet integrity. A zero count by itself does not prove a connection, because the panel may have sent nothing.
 
@@ -106,3 +106,11 @@ ip.addr == 192.168.1.50 && udp
 For lock/contact problems, identify both the lock mode and physical door position. An unlocked-but-closed door is a different case from an unlocked-and-open door.
 
 See [Contributing](contributing.md) for what to include in an issue. For tile resource/cache problems, use the [companion repository's troubleshooting guide](https://github.com/josh2893/TecomHA-Tiles-and-Addons#troubleshooting).
+
+## Activity shows only an event type
+
+Update to 3.4.3 and restart Home Assistant. Named entries include the door entity/device identifiers needed for Activity filtering. New entries use the name known when recorded; old entries are not backfilled. Run user name sync if an identified user appears only as a number.
+
+A native `access_granted` row may coexist with the named entry. “Event detected” is Home Assistant's fallback when no event type is available, not proof of a reload. Keep the access entity included in Recorder/Logbook; excluding it may hide both rows. See [named Activity](events-and-actions.md#named-activity-entries).
+
+After saving Options, the integration already requests a reload. If you subsequently change the panel's authentication or encryption, reload once both configurations match. The new code does not change session timing or add a different reload mechanism.

@@ -50,6 +50,7 @@ Illustrative door-open payload:
 ```yaml
 event_type: tecom_challengerplus_ctplus_event
 data:
+  entry_id: "your_config_entry_id"
   code: 165
   code_hex: "0xA5"
   object: 17
@@ -59,7 +60,7 @@ data:
   message: "Door 17 Open"
 ```
 
-Additional fields depend on the event. They can include `area`, `user`, `user_name`, `last_user` and `last_user_name`. A system-generated release can have no user. Do not interpret the absence of a name as proof that a credential was not used; name sync may simply be unavailable.
+The `entry_id` identifies the panel configuration entry. Additional fields depend on the event. They can include `area`, `user`, `user_name`, `last_user` and `last_user_name`. A system-generated release can have no user. Do not interpret the absence of a name as proof that a credential was not used; name sync may simply be unavailable.
 
 Where available, CTPlus event-table metadata is included:
 
@@ -75,9 +76,27 @@ The [protocol reference](protocol.md#known-event-mappings) lists known codes. Pr
 
 ## Per-door event entities
 
-Door event entities expose access granted, egress, forced and open-too-long activity. The entity state is the time of the event; `event_type` is an attribute. Triggering only on a change of the `event_type` attribute can miss repeated events of the same type. Use the event entity's timestamp state when building an event-entity automation.
+Door event entities expose access granted, egress, confirmed card/void denials, forced and open-too-long activity. The entity state is the time of the event; `event_type` is an attribute. Triggering only on a change of the `event_type` attribute can miss repeated events of the same type. Use the event entity's timestamp state when building an event-entity automation.
 
-**Multiple panels:** the current shared CTPlus event payload does not include a unique panel identifier. Per-door access event entities also match this stream by door number. Matching door numbers on different panels can therefore mix access activity; do not treat those events as identifying a particular panel without checking this limitation.
+**Multiple panels:** events include `entry_id`, and each door entity checks both the panel entry and door number. Event-bus automations should also filter by `entry_id` when several panels share object numbers.
+
+## Named Activity entries
+
+The integration records `tecom_challengerplus_access_activity` for supported events on loaded door access entities. It includes `entry_id`, `entity_id`, `device_id` when registered, `name`, `message`, `icon`, `code`, `event_type` and `door`. Entity/device identifiers are present before Home Assistant filters Activity. The message is a snapshot of the name available at the time; it does not repeat the door's entity label.
+
+| Event | Example message |
+| --- | --- |
+| Credentialed grant | `Access granted - J. Smith` |
+| System release | `Access granted - System` |
+| Exit button | `Access granted (exit button)` |
+| Explicit void denial | `Access denied - J. Smith (void)` |
+| Card rejection | `Access denied - Card rejected` |
+
+Without a synced name, an identified user is shown as `User 1041`. Card rejection `0x4B` does not identify a user or distinguish unknown from voided cards. The decoded general event has `denial_reason: card_rejected`, an empty `raw` and `raw_redacted: true`. Explicit `0x8B` has `denial_reason: void`. See [confirmed denial layouts](protocol.md#access-denial-layouts).
+
+Denials and anonymous releases do not overwrite the last successful credentialed access. Automations that mean a successful access should filter `access_granted` or `access_granted_egress`; a timestamp change can now also represent a denial. Entity IDs remain unchanged.
+
+Home Assistant can show its native event-type row alongside the named entry. History remains a timestamp timeline, and old Activity is not rewritten. Do not exclude the access entity to hide the native row, as that can hide both. The generic “Event detected” label alone does not establish that the integration reloaded.
 
 ## Integration actions
 

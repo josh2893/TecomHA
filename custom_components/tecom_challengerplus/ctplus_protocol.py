@@ -215,6 +215,10 @@ AREA_EVENT_CODES = (EVENT_AREA_SECURED, EVENT_AREA_ACCESSED, EVENT_AREA_SECURED_
 EVENT_ACCESS_GRANTED = 0x92
 EVENT_ACCESS_GRANTED_EGRESS = 0x9D
 ACCESS_EVENT_CODES = (EVENT_ACCESS_GRANTED, EVENT_ACCESS_GRANTED_EGRESS)
+EVENT_ACCESS_DENIED_CARD = 0x4B
+EVENT_ACCESS_DENIED_VOID = 0x8B
+ACCESS_DENIED_EVENT_CODES = (EVENT_ACCESS_DENIED_CARD, EVENT_ACCESS_DENIED_VOID)
+USER_EVENT_CODES = (*ACCESS_EVENT_CODES, EVENT_ACCESS_DENIED_VOID)
 
 # Point-scoped alarm codes. The event carries both the offending object and the
 # area it belongs to, so no zone-to-area mapping is required.
@@ -402,6 +406,12 @@ def parse_event_full(body: bytes) -> Optional[dict]:
     if not body:
         return None
 
+    # Do not let a truncated recognised denial fall through to a loose scan of
+    # its timestamp, which can itself contain the legacy 0x8A marker.
+    if (len(body) >= 7 and body[:2] == b'\x0f\x0c'
+            and body[6] in ACCESS_DENIED_EVENT_CODES and len(body) != 14):
+        return None
+
     # Anchored form. Checked FIRST because it starts at offset 0 and is therefore
     # unambiguous. The 0x8A scan below is a free search over the whole body, and
     # event timestamps regularly contain 0x8A -- letting it run first silently
@@ -410,6 +420,11 @@ def parse_event_full(body: bytes) -> Optional[dict]:
     # of timestamp bytes).
     if len(body) >= 9 and body[0] == 0x0F and body[1] == 0x0C:
         code = body[6]
+        # Timestamp-matched debug frames on two doors confirm a different 0x4B
+        # layout: six card bytes, then a one-byte door number. Both unknown and
+        # voided cards produced it, so this code cannot identify reason or user.
+        if code == EVENT_ACCESS_DENIED_CARD:
+            return {"code": code, "object": body[13], "area": 0, "user": 0, "anchored": True}
         obj = body[7] | (body[8] << 8)
         area = body[9] if len(body) >= 10 else 0
         # Bytes 10-11 carry the user number as a little-endian 16-bit value, but
@@ -417,7 +432,9 @@ def parse_event_full(body: bytes) -> Optional[dict]:
         # fields, so reading them unconditionally invents users that do not
         # exist. Confirmed against a capture of a four-digit user number, which
         # a single-byte read would have truncated to its low byte.
-        if code in ACCESS_EVENT_CODES and len(body) >= 12:
+        # The timestamp-matched 0x8B void-denial capture also confirms this
+        # full two-byte user field. Other denial layouts remain unverified.
+        if code in USER_EVENT_CODES and len(body) >= 12:
             user = body[10] | (body[11] << 8)
         else:
             user = 0
@@ -428,6 +445,8 @@ def parse_event_full(body: bytes) -> Optional[dict]:
         i = body.index(0x8A)
         if i + 2 < len(body):
             code = body[i + 1]
+            if code in ACCESS_DENIED_EVENT_CODES:
+                return None  # Only the anchored denial layouts are confirmed.
             obj = body[i + 2]
             if i + 3 < len(body):
                 obj |= body[i + 3] << 8

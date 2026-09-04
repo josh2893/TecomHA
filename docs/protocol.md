@@ -61,6 +61,8 @@ A recent live door event briefly takes precedence over a conflicting queued poll
 
 | Code | Meaning |
 |---|---|
+| `0x4B` | Card rejection, trailing door field; no identified user |
+| `0x8B` | Access denied — void; identified user field |
 | `0x86` | Door unlocked |
 | `0x87` | Door locked |
 | `0x88` | Door auto unlocked |
@@ -75,6 +77,19 @@ A recent live door event briefly takes precedence over a conflicting queued poll
 | `0xAA` | Door open too long restored |
 | `0xAE` | Door unsecured |
 | `0xAF` | Door secured |
+
+### Access-denial layouts
+
+Timestamp-correlated HA debug frames and CTPlus screenshots confirm these anchored `0F 0C` bodies, exactly 14 bytes long:
+
+| Code | Body fields after the code at offset 6 |
+| --- | --- |
+| `0x4B` | Offsets 7–12: six raw card bytes; offset 13: one-byte door number |
+| `0x8B` | Offsets 7–8: door, little endian; offset 9: area; offsets 10–11: user, little endian |
+
+The card-rejection door field was confirmed on two doors. Both unknown and voided cards produced `0x4B`, so it is labelled “Card rejected” without inferring a user or reason. The registered-card test still reported “void” in CTPlus and used `0x8B`; no `0x8C` / not-in-group layout is established. Other lengths and legacy unanchored denial forms are not guessed. Raw `0x4B` card bytes are redacted from diagnostics and bus payloads.
+
+See [the regression tests](../tests/test_access_activity.py) and [stable release notes](../CHANGELOG.md#version-343).
 
 ### Outputs
 
@@ -133,7 +148,7 @@ This layout was checked against 552 datagrams across 12 CTPlus captures: each ci
 
 Both immediate and async acknowledgements use the selected encryption. Wrong-key detection checks padding and frame CRCs, because CBC decryption can return invalid bytes without raising an error.
 
-See [ctplus_crypto.py](../custom_components/tecom_challengerplus/ctplus_crypto.py), [twofish.py](../custom_components/tecom_challengerplus/twofish.py) and the [3.4.2 release notes](../CHANGELOG.md#version-342) for details and capture-validation evidence.
+See [ctplus_crypto.py](../custom_components/tecom_challengerplus/ctplus_crypto.py), [twofish.py](../custom_components/tecom_challengerplus/twofish.py) and the [stable release notes](../CHANGELOG.md#version-343) for details and capture-validation evidence.
 
 ## Development tools
 

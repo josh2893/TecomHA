@@ -12,7 +12,7 @@ These features describe **CTPlus / Management Software mode**. Which entities ap
 | Door contact | `binary_sensor` | Physical open/closed state reported by the panel |
 | RAS / keypad | Read-only lock/contact entities | Limited status; no door control |
 | Relay / output | `switch` | On/off control and status |
-| Door activity | `event` | Access grants, egress, forced and open-too-long events |
+| Door activity | `event` | Access grants, confirmed denials, egress and door exceptions |
 | Last event | `sensor` | Latest panel event and diagnostic attributes |
 | Sync Users Now | `button` | Download user names for the associated panel |
 
@@ -72,12 +72,14 @@ Each configured door has an access event entity. Its `event_type` can be:
 
 - `access_granted`
 - `access_granted_egress`
+- `access_denied` — card rejection without an identified user
+- `access_denied_void` — explicit void denial with a user number when supplied
 - `door_forced`
 - `door_open_too_long`
 
-The entity's state is a timestamp for the most recent event. Read the attributes for the event type, door and user details. Access activity appears in Home Assistant's Activity feed.
+The entity's state is a timestamp for the most recent event. Read the attributes for the event type, door and user details. [Named access messages](events-and-actions.md#named-activity-entries) appear in Activity; History remains the event timestamp timeline.
 
-Optional [user name sync](configuration.md#user-name-sync) adds names to credential-based events. A panel-generated release may have no user, and an exit-button event does not necessarily identify a person. Last credentialed user information is retained so a following system release does not erase who badged.
+Optional [user name sync](configuration.md#user-name-sync) adds names to credential-based events. A panel-generated release may have no user, and an exit-button event does not necessarily identify a person. Last successful credentialed user information is retained so a denial or following system release does not erase who last gained access. Use `last_user` / `last_user_name` for that purpose; `user` / `user_name` describe the current event.
 
 ## Scope and limitations
 

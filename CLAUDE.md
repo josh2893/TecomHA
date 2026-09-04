@@ -163,7 +163,7 @@ hub._notify -> entity listeners -> async_write_ha_state
 | `relays` | output events `0x84`/`0x85`, relay status polls |
 | `input_alarms`, `area_alarms` | alarm and restore events |
 | `user_names` | user database download, cached to HA storage |
-| `last_access` | access events that carried a credential |
+| `last_access` | successful access events that carried a credential; denials do not update it |
 
 ### Precedence rules
 
@@ -223,7 +223,8 @@ Force arm (`0x06`) arms regardless of unsealed inputs. Plain arm (`0x09`) valida
 
 - The anchored `0F 0C` form must be checked **before** any loose byte scan. Timestamps contain bytes that look like markers, and a scan-first order mis-decoded well-formed events and invented phantom area numbers.
 - `area` is a single byte at offset 9. Byte 10 is a separate field.
-- `user` at bytes 10–11 applies **only** to access codes `0x92`/`0x9D`. Other codes reuse those bytes.
+- `user` at bytes 10–11 applies to confirmed codes `0x92`/`0x9D` and anchored 14-byte `0x8B` void denials. Other codes reuse those bytes.
+- Anchored 14-byte `0x4B` has six card bytes at offsets 7–12 and a one-byte door at 13, confirmed on two doors against timestamped CTPlus screenshots. Both unknown and voided cards produce it; label it Card rejected. Redact its card bytes, and never read them as a user/object. Other denial layouts are unverified.
 - Area-scoped codes (`0x0B`, `0x0C`, `0x6C`) report the area; object is zero.
 
 ### Path authentication
@@ -311,6 +312,7 @@ This repository is public, and debug dumps get attached to issue reports.
 - **Never commit site data**: user names, card numbers, door or area names, panel IP addresses. Use `J. Smith`, `Front Entry`, `192.168.1.50`.
 - **User records contain card and PIN material.** `parse_user_records()` reads only bytes 0–1 (number) and 19–34 (name). Do not extend it.
 - **Debug dumps redact authentication and user-record frames.** `_debug_append()` strips raw hex, structured bodies and acknowledgement copies, including combined datagrams and user records with no name. Pending host-frame diagnostics must retain the redacted values. Dump the authentication method, cipher and failure count, never passwords or encryption keys. If you add another frame class carrying sensitive data, redact it there too.
+- **Recognised `0x4B` bodies carry card data.** Redact raw bus, debug, ACK and retry copies, including malformed recognised bodies. Do not copy card bytes into `raw_user_bytes`.
 - **Dumps carry user numbers and counts, never names.**
 - `tools/validate_project.py` scans for committed site addresses; extend its patterns rather than relying on memory.
 
@@ -326,7 +328,8 @@ custom_components/tecom_challengerplus/
 ├── transport.py               UDP/TCP plumbing
 ├── config_flow.py             setup wizard and options (shared schema)
 ├── const.py                   config keys and defaults
-├── logbook.py                 Activity feed descriptions
+├── access.py                  supported Activity types and message formatting
+├── logbook.py                 Activity feed descriptions from recorded snapshots
 ├── event.py                   door access event entities
 ├── button.py                  user sync button
 ├── alarm_control_panel.py     areas
@@ -358,7 +361,7 @@ Things that have already caused bugs and are not obvious from reading:
 - **Debug dumps double-count frames.** One entry is written for the datagram and another for the parsed frame. Two identical entries at the same timestamp are one frame, not two.
 - **There are two door-status code paths.** One handles state, one only builds debug summaries. Changing state handling means editing the first.
 - **Entity restore is self-perpetuating.** A door lock entity restores from its own previous attributes; once `unknown`, it stays `unknown` across restarts until a real event. Do not rely on restore to recover state that was never known.
-- **HA's Activity feed does not read entity attributes.** It renders an event entity's `event_type` only. Anything richer needs `logbook.py`.
+- **HA's Activity feed does not read entity attributes.** It renders an event entity's `event_type` only. Rich entries use the dedicated access Activity stream and `logbook.py`. Put entity/device IDs in the bus payload before HA filters it, and snapshot the message at event time. Door entities must check both entry ID and door number. Never return `None` for events on a registered logbook stream.
 - **`supported_features` gates the tiles.** Force arm renders only when `ARM_CUSTOM_BYPASS` is advertised.
 - **Config flow sections nest their data.** Home Assistant returns each section as a dictionary under the section key, but the hub reads a flat mapping and every entry created before sections existed is stored flat. `flatten_sections()` collapses them before saving; storage must stay flat.
 - **Never add an entity where an attribute will do.** A per-input alarm entity was added in one release and removed in the next after it doubled a user's entity list.

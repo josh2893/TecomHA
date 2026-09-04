@@ -55,6 +55,6 @@ Once states and controls behave as expected, [add your dashboard and automations
 
 Use **Update** in HACS, or replace the integration folder with the newer release, then restart Home Assistant. Read the [changelog](../CHANGELOG.md) for any migration or setup changes affecting your version.
 
-Existing configuration is migrated where supported. Version 3.4.0 introduced authentication migration; its changelog explains how earlier passwords are preserved. Use 3.4.2 or later for the encrypted UDP transport fixes. Upgrading from 3.4.0 or 3.4.1 preserves the saved authentication method, password and key.
+Stable 3.4.3 consolidates the 3.4.0–3.4.2 pre-releases, including encrypted UDP fixes, artwork, grouped forms and named Activity. Upgrading from those pre-releases preserves authentication and encryption settings without another migration. Older entries use the version-2 migration described in the [stable release notes](../CHANGELOG.md#version-343), preserving the default computer password that the old code actually sent. Restart Home Assistant after replacing the integration files; removing and re-adding is unnecessary.
 
 The [companion dashboard tiles](https://github.com/josh2893/TecomHA-Tiles-and-Addons) are installed and updated separately.

@@ -36,7 +36,7 @@ The panel connection runs locally, with no cloud service required. Your panel co
 - **Manage your doors** — momentarily release a supported door, lock it, or leave it unlocked. Show its physical open/closed state separately using a door contact.
 - **Use your existing sensors** — bring wired contacts and motion detectors into dashboards and automations. Optional polling covers inputs that do not send live changes.
 - **Switch connected equipment** — control panel relays and see their state in Home Assistant.
-- **See access activity** — view door access events and, with optional user name sync, who last presented a credential.
+- **See access activity** — read named access grants and confirmed card denials in Activity, with optional user name sync.
 - **Keep familiar names** — import area, input, door and relay names from a CTPlus export so your dashboard makes sense at a glance.
 
 Full door control is available for **DGP doors numbered 17 and above**. RAS/keypad objects numbered 1–16 are read-only. See the [entity guide](docs/entities.md) for supported behaviour and limitations.

@@ -1506,7 +1506,7 @@ class TecomHub:
                     "Unhandled exception while processing CTPlus frame type=0x%02X seq=0x%02X body=%s",
                     fr.msg_type,
                     fr.seq,
-                    fr.body.hex(),
+                    self._sensitive_debug_body(fr.body) or fr.body.hex(),
                 )
                 self.state.last_event = f"CTPlus handler exception type 0x{fr.msg_type:02X} seq 0x{fr.seq:02X}"
                 self._notify()
@@ -1519,6 +1519,8 @@ class TecomHub:
     # both raw frames and structured copies before they reach the debug buffer.
     @staticmethod
     def _sensitive_debug_body(body: bytes) -> str | None:
+        if len(body) >= 7 and body[:2] == b"\x0f\x0c" and body[6] == proto.EVENT_ACCESS_DENIED_CARD:
+            return f"<redacted card rejection, {len(body)} bytes>"
         if body.startswith((b'\x01\x06\x0b', b'\x01\x31\x0a\x1e')):
             return f"<redacted authentication, {len(body)} bytes>"
         if len(body) >= 4 and body[0] == 0x7D and body[2] == 0x1D:
@@ -1739,12 +1741,15 @@ class TecomHub:
             raw_bytes = fr.to_bytes()
         except Exception:
             raw_bytes = b""
+        redacted = self._sensitive_debug_body(fr.body)
         self.hass.bus.async_fire(
             f"{DOMAIN}_raw",
             {
-                "hex": raw_bytes.hex() if raw_bytes else fr.body.hex(),
+                "entry_id": self.entry.entry_id,
+                "redacted": redacted,
+                "hex": "" if redacted else raw_bytes.hex() if raw_bytes else fr.body.hex(),
                 "len": len(raw_bytes) if raw_bytes else len(fr.body),
-                "body_hex": fr.body.hex(),
+                "body_hex": "" if redacted else fr.body.hex(),
                 "body_len": len(fr.body),
                 "seq": fr.seq,
                 "msg_type": fr.msg_type,
@@ -1999,7 +2004,7 @@ class TecomHub:
     def _handle_ctplus_frame(self, fr: proto.Frame) -> None:
         if fr.msg_type == 0x49:
             self._enter_quiet_mode("panel returned 0x49 for a host recall", duration=max(60.0, float(self.poll_interval) * 2.0))
-            self.state.last_event = f"Panel 0x49 {fr.body.hex()}"
+            self.state.last_event = f"Panel 0x49 {self._sensitive_debug_body(fr.body) or fr.body.hex()}"
             self._notify()
             return
 
@@ -2187,41 +2192,7 @@ class TecomHub:
                 self._poll_backoff_until = max(self._poll_backoff_until, loop_now + 2.5)
 
                 payload = decode_ctplus_event(code, obj, fr.body.hex())
-                # Access events carry the user number that presented the
-                # credential. Zero means the panel/system opened the door
-                # (e.g. via a macro) rather than a card holder.
-                ev_user = ev_full.get("user") or 0
-                if code in proto.ACCESS_EVENT_CODES:
-                    # user is None when the panel opened the door itself, e.g. a
-                    # macro-driven unlock rather than a presented credential.
-                    payload["user"] = ev_user or None
-                    payload["user_name"] = self.user_name(ev_user)
-                    self._access_log.append({
-                        "ts": time.time(),
-                        "door": obj,
-                        "code": f"0x{code:02X}",
-                        "kind": "egress" if code == proto.EVENT_ACCESS_GRANTED_EGRESS else "granted",
-                        "user": ev_user or None,
-                        # Whether a name was resolvable, without putting the name
-                        # itself into a file that gets shared for troubleshooting.
-                        "name_known": bool(self.user_name(ev_user)) if ev_user else False,
-                        "raw_user_bytes": fr.body[10:12].hex() if len(fr.body) >= 12 else None,
-                    })
-                    if ev_user:
-                        # Only credentialed accesses update "who last entered",
-                        # so a following panel-initiated access does not erase it.
-                        self.state.last_access[obj] = {
-                            "user": ev_user,
-                            "user_name": self.user_name(ev_user),
-                            "code": code,
-                            "ts": time.time(),
-                        }
-                        payload["last_user"] = ev_user
-                        payload["last_user_name"] = self.user_name(ev_user)
-                    else:
-                        prior = self.state.last_access.get(obj) or {}
-                        payload["last_user"] = prior.get("user")
-                        payload["last_user_name"] = prior.get("user_name")
+                payload["entry_id"] = self.entry.entry_id
                 if ev_area:
                     payload.setdefault("area", ev_area)
 
@@ -2240,7 +2211,7 @@ class TecomHub:
                         self._last_repeated_event_first_seen_monotonic = now_monotonic
                     self._last_repeated_event_last_seen_monotonic = now_monotonic
                     self._last_repeated_event_key = repeated_key
-                    self._last_repeated_event_raw = fr.to_bytes().hex()
+                    self._last_repeated_event_raw = "" if self._sensitive_debug_body(fr.body) else fr.to_bytes().hex()
                     self._last_repeated_event_code = code
                     self._last_repeated_event_object = obj
                     self._last_repeated_event_count = repeat_count
@@ -2262,6 +2233,44 @@ class TecomHub:
                     # quiet-mode logic, but do not generate extra entity churn or recorder
                     # writes that could add load during a burst.
                     return
+
+                # Access events carry the user number that presented the
+                # credential. Zero means the panel/system opened the door
+                # (e.g. via a macro) rather than a card holder.
+                ev_user = ev_full.get("user") or 0
+                if code in (*proto.ACCESS_EVENT_CODES, *proto.ACCESS_DENIED_EVENT_CODES):
+                    denied = code in proto.ACCESS_DENIED_EVENT_CODES
+                    # user is None when the panel opened the door itself, e.g. a
+                    # macro-driven unlock rather than a presented credential.
+                    payload["user"] = ev_user or None
+                    payload["user_name"] = self.user_name(ev_user)
+                    self._access_log.append({
+                        "ts": time.time(),
+                        "door": obj,
+                        "code": f"0x{code:02X}",
+                        "denial_reason": payload.get("denial_reason"),
+                        "kind": "denied" if denied else "egress" if code == proto.EVENT_ACCESS_GRANTED_EGRESS else "granted",
+                        "user": ev_user or None,
+                        # Whether a name was resolvable, without putting the name
+                        # itself into a file that gets shared for troubleshooting.
+                        "name_known": bool(self.user_name(ev_user)) if ev_user else False,
+                        "raw_user_bytes": fr.body[10:12].hex() if code in proto.USER_EVENT_CODES and len(fr.body) >= 12 else None,
+                    })
+                    if ev_user and not denied:
+                        # Only successful credentialed accesses update "who last entered",
+                        # so a following panel-initiated access does not erase it.
+                        self.state.last_access[obj] = {
+                            "user": ev_user,
+                            "user_name": self.user_name(ev_user),
+                            "code": code,
+                            "ts": time.time(),
+                        }
+                        payload["last_user"] = ev_user
+                        payload["last_user_name"] = self.user_name(ev_user)
+                    else:
+                        prior = self.state.last_access.get(obj) or {}
+                        payload["last_user"] = prior.get("user")
+                        payload["last_user_name"] = prior.get("user_name")
 
                 if code == 0x96:
                     mapped = self._input_event_state(code)
@@ -2344,7 +2353,7 @@ class TecomHub:
                 return
 
             # Unknown 0x40 frame (data but not parsed)
-            self.state.last_event = f"CTPlus 0x40 {fr.body.hex()}"
+            self.state.last_event = f"CTPlus 0x40 {self._sensitive_debug_body(fr.body) or fr.body.hex()}"
             self._notify()
             return
 
@@ -2353,7 +2362,7 @@ class TecomHub:
             self._notify()
             return
 
-        self.state.last_event = f"CTPlus {fr.msg_type:02X} {fr.body.hex()}"
+        self.state.last_event = f"CTPlus {fr.msg_type:02X} {self._sensitive_debug_body(fr.body) or fr.body.hex()}"
         self._notify()
 
     async def async_dump_debug(self) -> str:
@@ -2438,7 +2447,10 @@ class TecomHub:
                     "last_repeated_event_code": self._last_repeated_event_code,
                     "last_repeated_event_object": self._last_repeated_event_object,
                     "last_repeated_event_count": self._last_repeated_event_count,
-                    "last_repeated_event_decoded": self._last_repeated_event_decoded,
+                    "last_repeated_event_decoded": {
+                        k: v for k, v in (self._last_repeated_event_decoded or {}).items()
+                        if k not in ("user_name", "last_user_name")
+                    },
                     "last_repeated_event_first_seen_monotonic": self._last_repeated_event_first_seen_monotonic,
                     "last_repeated_event_last_seen_monotonic": self._last_repeated_event_last_seen_monotonic,
                     "last_event": self.state.last_event,
@@ -2491,6 +2503,7 @@ class TecomHub:
                             "total": len(self._access_log),
                             "with_user": sum(1 for a in self._access_log if a.get("user")),
                             "without_user": sum(1 for a in self._access_log if not a.get("user")),
+                            "denied": sum(1 for a in self._access_log if a.get("kind") == "denied"),
                             "egress": sum(1 for a in self._access_log if a.get("kind") == "egress"),
                             "names_resolved": sum(1 for a in self._access_log if a.get("name_known")),
                         },
