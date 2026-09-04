@@ -1,0 +1,80 @@
+name: Sync Wiki
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "docs/**"
+      - ".github/wiki/**"
+      - "tools/build_wiki.py"
+      - ".github/workflows/sync-wiki.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "docs/**"
+      - ".github/wiki/**"
+      - "tools/build_wiki.py"
+      - ".github/workflows/sync-wiki.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-wiki
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Wiki documentation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build and validate Wiki
+        run: python3 tools/build_wiki.py --output "${RUNNER_TEMP}/wiki-output"
+
+  publish:
+    name: Publish Wiki
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build Wiki
+        run: python3 tools/build_wiki.py --output "${RUNNER_TEMP}/wiki-output"
+
+      - name: Clone and update Wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          auth_header="$(printf 'x-access-token:%s' "${WIKI_TOKEN}" | base64 | tr -d '\n')"
+          wiki_repo="${RUNNER_TEMP}/wiki-repository"
+
+          git -c http.extraheader="AUTHORIZATION: basic ${auth_header}" \
+            clone "https://github.com/${GITHUB_REPOSITORY}.wiki.git" "${wiki_repo}"
+
+          rsync -a --delete --exclude='.git/' \
+            "${RUNNER_TEMP}/wiki-output/" "${wiki_repo}/"
+
+          git -C "${wiki_repo}" config user.name "github-actions[bot]"
+          git -C "${wiki_repo}" config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "${wiki_repo}" add --all
+
+          if git -C "${wiki_repo}" diff --cached --quiet; then
+            echo "Wiki is already up to date."
+            exit 0
+          fi
+
+          git -C "${wiki_repo}" commit -m \
+            "Sync wiki from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git -C "${wiki_repo}" \
+            -c http.extraheader="AUTHORIZATION: basic ${auth_header}" \
+            push origin HEAD:master
