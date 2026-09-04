@@ -1,33 +1,144 @@
-# Comms path configuration screenshots
+# Configure a comms path for Home Assistant with CTPlus
 
-> **Important:** These screenshots are retained as a site example. For current
-> authentication, encryption, ports and event-filter guidance, use the
-> [Panel setup guide](Panel-Setup). Back up the panel configuration before
-> changing a Challenger or DGP configuration.
+[← Documentation](Documentation) · [Panel setup](Panel-Setup) · [Configuration](Configuration)
 
-<img width="688" height="147" alt="image" src="https://github.com/user-attachments/assets/5bde02af-fe4c-472d-b17c-0586557fc7e8" />
+This guide creates a dedicated **Computer Event Driven** Ethernet communication path for TecomHA. The screenshots show example values; use the IP address, ports, credentials and encryption key for your own installation.
 
-**Home Assistant Integration Comms Path Config**
-<img width="931" height="596" alt="image" src="https://github.com/user-attachments/assets/750e42ff-87a3-4fa5-9ebd-16535dce8850" />
-<img width="930" height="596" alt="image" src="https://github.com/user-attachments/assets/890ace63-5b4c-421c-a587-0a5034462b6d" />
-**Ensure the filter is applied as below, If you have other settings like: Report connection events, Report system alarms and Report communications events. You may see the comms path fail and reconnect continuously. To fix this untick them, Disable comms path, Clearn Comms path event buffer, Enable comms path, push config to panel.**
-<img width="376" height="219" alt="image" src="https://github.com/user-attachments/assets/6e500c0c-e7b7-496c-8db4-19c5c8580979" />
+> **Important:** Back up the panel configuration before making changes. In CTPlus, open **Administration** and export the panel and system configuration as appropriate for your installation.
 
-<img width="937" height="591" alt="image" src="https://github.com/user-attachments/assets/307620e7-4e08-415a-8add-574f490e1eb4" />
-<img width="940" height="587" alt="image" src="https://github.com/user-attachments/assets/621ad6e3-a081-4577-9167-e9640966a81f" />
-<img width="941" height="596" alt="image" src="https://github.com/user-attachments/assets/2ffb7470-fc52-4079-9b6f-0c3567e231ac" />
-<img width="931" height="588" alt="image" src="https://github.com/user-attachments/assets/d01afb3e-b2eb-4f96-87d0-b10eff9ccd91" />
-<img width="933" height="591" alt="image" src="https://github.com/user-attachments/assets/672e40df-7544-4172-b6bd-95f850b058de" />
-<img width="930" height="591" alt="image" src="https://github.com/user-attachments/assets/7c7025fb-15d9-40a0-a91b-5a0ae6473154" />
+![CTPlus Administration tab with the Export panel and Export system options highlighted](images/comms-path/ctplus-backup-options.png)
 
-**HomeAssistant IP, Ports From Integration Configuration Screen**
-<img width="936" height="607" alt="image" src="https://github.com/user-attachments/assets/59570802-a930-459f-ae5f-01e6883296d2" />
-<img width="942" height="606" alt="image" src="https://github.com/user-attachments/assets/8846777a-dd1c-484d-a0d9-841ee2978c38" />
+## 1. Create a dedicated communication path
 
-**CT-Plus should be changed to use comms path 4 with port 3006 and account code 2**
-<img width="932" height="593" alt="image" src="https://github.com/user-attachments/assets/1c91cd24-bbdd-4c13-9c8e-a8844598c131" />
-<img width="935" height="591" alt="image" src="https://github.com/user-attachments/assets/b71932b3-ae7b-4823-af1b-ed6e69ea4d11" />
+Use a spare communication-path record and give it a descriptive name such as `HomeAssistant`. Home Assistant must not share the path used by the CTPlus desktop application.
 
-**CT-Plus Panel Connection Screen**
-<img width="741" height="577" alt="image" src="https://github.com/user-attachments/assets/61d91fe4-b0cd-4ff8-9bb6-6e2f721b8ee0" />
-<img width="742" height="571" alt="image" src="https://github.com/user-attachments/assets/58ff1960-8b24-42b3-8d11-7688481f01ae" />
+On the **Main** tab, configure:
+
+| Setting | Value |
+| --- | --- |
+| **Interface location** | `On Board` |
+| **Format** | `Computer Event Driven` |
+| **Interface port** | `Ethernet` |
+
+TecomHA supports either the classic **Security password** method or **User name and password** authentication. Configure only the method you intend to use, then enter the same credentials in Home Assistant.
+
+![CTPlus Main tab configured for a HomeAssistant communication path](images/comms-path/main-settings.png)
+
+## 2. Configure connection control
+
+On the **Connection control** tab, enable:
+
+- **Always connect**
+- **Stay connected on empty buffer**
+- **Control command**
+- **Isolated inputs trigger path**
+
+![CTPlus Connection control tab with the required options enabled](images/comms-path/connection-control.png)
+
+## 3. Configure the event filter
+
+On the **Filter** tab, enable the event categories TecomHA needs:
+
+- **Report alarm events**
+- **Report connection events**
+- **Report system alarms**
+- **Report communication events**
+- **Report access events**
+- **Multi-break alarms**
+- **Multi-break restores**
+- **Report open/close**
+
+An event category excluded here will not be delivered to Home Assistant.
+
+![CTPlus Filter tab with the TecomHA event categories enabled](images/comms-path/event-filter.png)
+
+## 4. Disable test calls
+
+On the **Test calls** tab, set **Test call type** to `No test call`.
+
+![CTPlus Test calls tab set to No test call](images/comms-path/test-calls.png)
+
+## 5. Leave dial settings unused
+
+No dial settings are required for the Ethernet path. Leave the **Dial settings** tab unconfigured.
+
+![CTPlus Dial settings tab with no modem or telephone settings configured](images/comms-path/dial-settings.png)
+
+## 6. Configure IP and encryption
+
+On the **IP/Encryption settings** tab, configure:
+
+| Setting | Value |
+| --- | --- |
+| **IP options** | `UDP/IP` |
+| **Send to address** | The static IP address of the Home Assistant host |
+| **Send port** | A port reserved for this Home Assistant path |
+| **Receive port** | A port reserved for this Home Assistant path |
+| **Encryption type** | Prefer `AES CBC, 128 bit` or `AES CBC, 256 bit`; `None` is supported |
+| **Encryption key** | A key you choose and enter exactly the same way in TecomHA |
+
+> **Port note:** The ports for this path must not conflict with the separate communication path used by CTPlus. Send and receive ports may use the same number when both endpoints are configured that way. If you use different numbers, match each direction in the TecomHA configuration.
+
+The IP address and port numbers in the screenshot are examples only. Do not copy them unless they match your network design.
+
+![CTPlus IP and encryption settings for the HomeAssistant communication path](images/comms-path/ip-encryption.png)
+
+## 7. Configure advanced settings
+
+On the **Advanced settings** tab, use the following values:
+
+| Setting | Value |
+| --- | ---: |
+| **Message ack** | `5000 ms` |
+| **Connect timeout** | `30 sec` |
+| **Heartbeat timeout** | `0 sec` |
+| **Wait time between connections** | `5 sec` |
+| **Computer attempts** | `255` |
+| **Connect retries** | `0` |
+| **Message retries** | `3` |
+
+![CTPlus Advanced settings tab configured for TecomHA](images/comms-path/advanced-settings.png)
+
+## 8. Choose an authentication method
+
+The **Authentication** tab lets you use a path user name and password instead of the classic computer/security password.
+
+| Method | Where to configure it |
+| --- | --- |
+| **Security / computer password** | Enter the path's **Security password** on the **Main** tab and leave the **Authentication** tab empty |
+| **Path user name and password** | Enter both values on the **Authentication** tab; the security/computer password is then not used |
+
+Whichever method you choose must match the **Authentication type** and credentials configured in TecomHA.
+
+![CTPlus Authentication tab for path user name and password authentication](images/comms-path/authentication.png)
+
+## 9. Save and send the configuration
+
+Save the communication path, ensure it is enabled, and send the updated configuration to the panel. Then configure TecomHA with the matching panel address, ports, authentication method and encryption settings.
+
+For field-by-field TecomHA guidance, see [Configuration](Configuration#connection-authentication-and-encryption). For network and compatibility details, see [Panel setup](Panel-Setup).
+
+## 10. Import CTPlus names into TecomHA
+
+TecomHA can apply CTPlus object names to entities that are already loaded in Home Assistant.
+
+1. In CTPlus, open **Administration** and select **Export panel**.
+2. Save the resulting `export.panel` file.
+3. Copy it to a location under Home Assistant's `/config` directory that TecomHA can read, for example `/config/export.panel`.
+4. Open **Settings → Devices & services → TecomHA → Configure**.
+5. Under **Naming from export.panel**, enter the full path and enable the object groups you want to rename.
+6. Save the integration options.
+
+![CTPlus Administration tab with Export panel highlighted](images/comms-path/export-panel.png)
+
+![TecomHA Naming from export.panel options in Home Assistant](images/comms-path/naming-options.png)
+
+The import applies friendly names only. It does not create or remove entities. If names change later, replace `export.panel` and reload the TecomHA integration.
+
+![Home Assistant integration menu with Reload highlighted](images/comms-path/reload-integration.png)
+
+## Next steps
+
+- [Configure TecomHA](Configuration)
+- [Review panel setup and troubleshooting notes](Panel-Setup)
+- [Review entity scope and limitations](Entities#scope-and-limitations)
