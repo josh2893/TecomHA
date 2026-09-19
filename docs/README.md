@@ -8,6 +8,7 @@ Start with installation, then configure the panel connection and choose the enti
 | --- | --- |
 | [Installation](installation.md) | HACS, manual installation, adding the integration and updating |
 | [Panel setup](panel-setup.md) | Dedicated communication path, network settings, authentication and encryption |
+| [CTPlus comms path walkthrough](https://github.com/josh2893/TecomHA/wiki/Comms-Path-Configuration) | Screenshot-by-screenshot path creation, filters, ports, authentication and encryption |
 | [Configuration](configuration.md) | Object ranges, CTPlus name imports, polling, user name sync and advanced defaults |
 | [Entities](entities.md) | Alarm areas, inputs, door locks and contacts, relays and access events |
 | [Dashboards and automations](dashboards-and-automations.md) | Companion tiles, contact and schedule indicators, and example automations |

@@ -41,6 +41,14 @@ The panel connection runs locally, with no cloud service required. Your panel co
 
 Full door control is available for **DGP doors numbered 17 and above**. RAS/keypad objects numbered 1–16 are read-only. See the [entity guide](docs/entities.md) for supported behaviour and limitations.
 
+## See TecomHA in action
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/josh2893/TecomHA/main/docs/images/tecomha-showcase.gif" alt="TecomHA examples showing iOS widgets, alarm area controls and door controls in Home Assistant" width="420" />
+</p>
+
+<p align="center"><sub>Alarm areas and door controls in Home Assistant, including iOS widgets.</sub></p>
+
 ## Make it part of your home
 
 Once your panel is connected, its entities work with Home Assistant automations. For example:
@@ -65,7 +73,7 @@ The companion tiles can show alarm causes, physical door contact state and last 
 You'll need a ChallengerPlus or Discovery panel reachable from Home Assistant, and access to configure a dedicated communication path on the panel.
 
 1. **Install TecomHA** through HACS as a custom integration, or install manually.
-2. **Prepare the panel connection** using the [panel setup guide](docs/panel-setup.md).
+2. **Prepare the panel connection** using the [panel setup guide](docs/panel-setup.md). For a screenshot-by-screenshot CTPlus walkthrough, follow the [detailed comms path guide](https://github.com/josh2893/TecomHA/wiki/Comms-Path-Configuration).
 3. **Add “Tecom ChallengerPlus”** in Home Assistant and select the areas, inputs, doors and relays you want to use.
 4. **Add your entities to a dashboard** and try your first automation.
 
@@ -77,6 +85,7 @@ You'll need a ChallengerPlus or Discovery panel reachable from Home Assistant, a
 | --- | --- |
 | Installation or an update | [Installation](docs/installation.md) |
 | Panel path, ports or encryption | [Panel setup](docs/panel-setup.md) |
+| CTPlus communication path with screenshots | [Detailed comms path walkthrough](https://github.com/josh2893/TecomHA/wiki/Comms-Path-Configuration) |
 | Entity ranges, names or polling | [Configuration](docs/configuration.md) |
 | What each entity does | [Entities and supported behaviour](docs/entities.md) |
 | Dashboard layouts and automation YAML | [Dashboards and automations](docs/dashboards-and-automations.md) |

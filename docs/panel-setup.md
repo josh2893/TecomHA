@@ -11,6 +11,8 @@
 
 The instructions below describe CTPlus mode. Panel menu labels can vary with model and firmware.
 
+> **Visual CTPlus walkthrough:** See [Configure a comms path for Home Assistant with CTPlus](https://github.com/josh2893/TecomHA/wiki/Comms-Path-Configuration) for the complete screenshot-by-screenshot procedure.
+
 ## Give Home Assistant its own communication path
 
 Create a dedicated computer / Management Software path for Home Assistant. Do not use the path and port currently assigned to the CTPlus desktop application: competing clients can take each other's traffic and interrupt the session.
