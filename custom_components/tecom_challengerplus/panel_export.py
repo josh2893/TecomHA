@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,7 +26,10 @@ class PanelExportNames:
 
 
 def _decode_multi_json(text: str) -> list[Any]:
-    dec = json.JSONDecoder()
+    # CTPlus can write literal newlines and other control characters inside
+    # quoted description fields. That is not strict JSON, but it is valid
+    # CTPlus output and unrelated fields must not prevent the name import.
+    dec = json.JSONDecoder(strict=False)
     idx = 0
     objs: list[Any] = []
     while idx < len(text):
@@ -61,7 +65,9 @@ def _resolve_path(path_str: str) -> Path:
 def _normalize_name(value: Any) -> str | None:
     if value is None:
         return None
-    name = str(value).strip()
+    # A raw control character may also appear in a name. Replace runs with one
+    # space so they cannot leak into entity names or split log messages.
+    name = re.sub(r'[\x00-\x1f\x7f]+', ' ', str(value)).strip()
     return name or None
 
 
@@ -122,11 +128,18 @@ def load_panel_export_names(path_str: str) -> PanelExportNames:
         return PanelExportNames()
 
     try:
-        text = path.read_text(encoding='utf-8-sig')
-    except UnicodeDecodeError:
-        text = path.read_text(encoding='latin-1')
-
-    objs = _decode_multi_json(text)
+        try:
+            text = path.read_text(encoding='utf-8-sig')
+        except UnicodeDecodeError:
+            text = path.read_text(encoding='latin-1')
+        objs = _decode_multi_json(text)
+    except (OSError, json.JSONDecodeError) as err:
+        _LOGGER.error(
+            'Could not read panel export %s; continuing without imported names: %s',
+            path,
+            err,
+        )
+        return PanelExportNames()
     if not objs:
         _LOGGER.warning('No JSON documents found in panel export: %s', path)
         return PanelExportNames()

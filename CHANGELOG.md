@@ -8,6 +8,25 @@ way, the notes say so.
 
 ---
 
+## Version 3.4.4
+
+### CTPlus panel export compatibility
+
+- Accepts literal control characters inside quoted fields in CTPlus-generated
+  `export.panel` files. CTPlus was observed writing trailing newlines directly
+  into macro and event-flag descriptions, which strict JSON parsing rejected
+  before any object names could be imported.
+- Removes embedded control characters from imported entity names so a line
+  break in an area, input, door, relay or RAS description cannot produce a
+  malformed Home Assistant name.
+- An unreadable or genuinely malformed optional export now logs the parsing
+  error and continues loading the integration without imported names, instead
+  of preventing the entire configuration entry from starting.
+
+No configuration change is required. Users affected by the startup error can
+replace the existing `export.panel` file with the newly generated file and
+reload the integration after updating.
+
 ## Version 3.4.3
 
 This is the first stable release of the 3.4 series. It brings together the
